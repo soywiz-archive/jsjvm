@@ -74,6 +74,7 @@ class ConstantPool {
 	}
 
 	getType(index: number) { return this.items[index].constructor; }
+	getFieldReference(index: number) { return this.get<JavaConstantFieldReference>(index); }
 	getMethodReference(index: number) { return this.get<JavaConstantMethodReference>(index); }
 	getMethodType(index: number) { return this.getMethodReference(index).type(this); }
 	dump() { this.items.forEach((item, index) => { console.log(index, item.constructor, item); }); }
@@ -86,14 +87,21 @@ class JavaConstantLong implements JavaConstant { constructor(pool: ConstantPool,
 class JavaConstantDouble implements JavaConstant { constructor(pool: ConstantPool, public value: number) { } }
 class JavaConstantClassReference implements JavaConstant { constructor(pool: ConstantPool, public indexName: number) { } }
 class JavaConstantStringReference implements JavaConstant { constructor(pool: ConstantPool, public index: number) { } }
-class JavaConstantFieldReference implements JavaConstant { constructor(pool: ConstantPool, public index1: number, public index2: number) { } }
-class JavaConstantMethodReference implements JavaConstant {
+
+class JavaConstantFieldMethodReference implements JavaConstant {
 	constructor(pool: ConstantPool, public indexClassReference: number, public indexNameType: number) { }
 	classReference(pool: ConstantPool) { return pool.get<JavaConstantClassReference>(this.indexClassReference); }
 	className(pool: ConstantPool) { return pool.getString(this.classReference(pool).indexName); }
 	nameTypeDescriptor(pool: ConstantPool) { return pool.get<JavaConstantNameTypeDescriptor>(this.indexNameType); }
 	name(pool: ConstantPool) { return this.nameTypeDescriptor(pool).name(pool); }
 	type(pool: ConstantPool) { return this.nameTypeDescriptor(pool).type(pool); }
+}
+
+class JavaConstantFieldReference extends JavaConstantFieldMethodReference {
+	constructor(pool: ConstantPool, public indexClassReference: number, public indexNameType: number) { super(pool, indexClassReference, indexNameType); }
+}
+class JavaConstantMethodReference extends JavaConstantFieldMethodReference {
+	constructor(pool: ConstantPool, public indexClassReference: number, public indexNameType: number) { super(pool, indexClassReference, indexNameType); }
 }
 class JavaConstantInterfaceMethodReference implements JavaConstant { constructor(pool: ConstantPool, public index1: number, public index2: number) { } }
 class JavaConstantNameTypeDescriptor implements JavaConstant {
@@ -111,7 +119,7 @@ class JavaAttributeInfo { constructor(public index: number, public data: NodeBuf
 class Instruction {
 	public name: string;
 
-	constructor(public offset: number, public op: Opcode, public param: any) {
+	constructor(public offset: number, public op: Opcode, public param: any, public param2: any = null) {
 		this.name = Opcode[op];
 	}
 }
@@ -125,29 +133,29 @@ class InstructionReader {
 			case Opcode.lookupswitch: throw (new Error("Not implemented lookupswitch"));
 			case Opcode.bipush: return new Instruction(offset, op, code.readUInt8());
 			case Opcode.sipush: return new Instruction(offset, op, code.readUInt16BE());
-			case Opcode.iload: case Opcode.lload: case Opcode.fload: case Opcode.dload: case Opcode.aload:
-			case Opcode.istore: case Opcode.lstore: case Opcode.fstore: case Opcode.dstore: case Opcode.astore: case Opcode.ret:
-				return new Instruction(offset, op, code.readUInt8());
-
 			case Opcode.ldc: return new Instruction(offset, op, code.readUInt8());
-
-			case Opcode.ldc_w: case Opcode.ldc2_w:  case Opcode.getstatic: case Opcode.putstatic: 
-			case Opcode.getfield: case Opcode.putfield:  case Opcode.new: case Opcode.invokevirtual: case Opcode.invokespecial:
-			case Opcode.invokestatic: case Opcode.anewarray: case Opcode.checkcast: case Opcode.instanceof:
-				return new Instruction(offset, op, code.readUInt16BE());
-
-			case Opcode.iinc:  throw (new Error("Not implemented index_const_body"));
-			case Opcode.ifeq: case Opcode.ifne: case Opcode.iflt: case Opcode.ifge: case Opcode.ifgt: case Opcode.ifle: 
-			case Opcode.if_icmpeq: case Opcode.if_icmpne: case Opcode.if_icmplt: case Opcode.if_icmpge: case Opcode.if_icmpgt: case Opcode.if_icmple: 
-			case Opcode.if_acmpeq: case Opcode.if_acmpne:  case Opcode.goto: case Opcode.jsr:  case Opcode.ifnull: case Opcode.ifnonnull:
-				return new Instruction(offset, op, code.readInt16BE());
-
+			case Opcode.iinc: return new Instruction(offset, op, code.readUInt8(), code.readInt8());
 			case Opcode.newarray: throw (new Error("Not implemented newarray"));
 			case Opcode.wide: throw (new Error("Not implemented wide"));
 			case Opcode.multianewarray: throw (new Error("Not implemented multianewarray"));
 			case Opcode.invokeinterface: throw (new Error("Not implemented invokeinterface"));
 			case Opcode.invokedynamic: throw (new Error("Not implemented invokedynamic"));
 			case Opcode.goto_w: case Opcode.jsr_w: throw (new Error("Not implemented branchbyte1_4_body"));
+
+			case Opcode.iload: case Opcode.lload: case Opcode.fload: case Opcode.dload: case Opcode.aload:
+			case Opcode.istore: case Opcode.lstore: case Opcode.fstore: case Opcode.dstore: case Opcode.astore: case Opcode.ret:
+				return new Instruction(offset, op, code.readUInt8());
+
+			case Opcode.ldc_w: case Opcode.ldc2_w:  case Opcode.getstatic: case Opcode.putstatic: 
+			case Opcode.getfield: case Opcode.putfield:  case Opcode.new: case Opcode.invokevirtual: case Opcode.invokespecial:
+			case Opcode.invokestatic: case Opcode.anewarray: case Opcode.checkcast: case Opcode.instanceof:
+				return new Instruction(offset, op, code.readUInt16BE());
+
+			case Opcode.ifeq: case Opcode.ifne: case Opcode.iflt: case Opcode.ifge: case Opcode.ifgt: case Opcode.ifle: 
+			case Opcode.if_icmpeq: case Opcode.if_icmpne: case Opcode.if_icmplt: case Opcode.if_icmpge: case Opcode.if_icmpgt: case Opcode.if_icmple: 
+			case Opcode.if_acmpeq: case Opcode.if_acmpne:  case Opcode.goto: case Opcode.jsr:  case Opcode.ifnull: case Opcode.ifnonnull:
+				return new Instruction(offset, op, offset + code.readInt16BE());
+
 			default: return new Instruction(offset, op, null);
 		}
 	}
@@ -193,17 +201,10 @@ class JavaMethod {
 	}
 }
 
-class Node {
-	toString() { return ''; }
-}
-class NodeRef extends Node {
-	constructor(public name: string) { super(); }
-	toString() { return this.name; }
-}
-class NodeValue extends Node {
-	constructor(public value: number) { super(); }
-	toString() { return String(this.value); }
-}
+class Node { toString() { return ''; } }
+class NodeRef extends Node { constructor(public name: string) { super(); } toString() { return this.name; } }
+class NodeRaw extends Node { constructor(public name: string) { super(); } toString() { return this.name; } }
+class NodeValue extends Node { constructor(public value: number) { super(); } toString() { return String(this.value); } }
 class NodeArrayAccess extends Node {
 	constructor(public array: Node, public index: Node) { super(); }
 	toString() { return this.array.toString() + '[' + this.index.toString() + ']'; }
@@ -217,6 +218,11 @@ class NodeCastFloat extends Node { constructor(public node: Node) { super(); } t
 class NodeBinop extends Node {
 	constructor(public left: Node, public op: string, public right: Node) { super(); }
 	toString() { return '(' + this.left.toString() + ' ' + this.op + ' ' + this.right.toString() + ')'; }
+}
+
+class NodeUnop extends Node {
+	constructor(public left: Node, public l: string, public r: string) { super(); }
+	toString() { return '(' + this.l + this.left.toString() + this.r + ')'; }
 }
 
 class NodeCall extends Node {
@@ -244,6 +250,14 @@ class JavaType {
 	static _demangle(data: StringReader) {
 		var type = data.read();
 		switch (type) {
+			case 'L':
+				var out = '';
+				while (!data.eof) {
+					var c = data.read();
+					if (c == ';') break;
+					out += c;
+				}
+				return new JavaObject(out);
 			case 'V': return new JavaVoid();
 			case 'I': return new JavaInteger();
 			case 'J': return new JavaLong();
@@ -268,6 +282,7 @@ class JavaByte extends JavaType { mangled = "B"; }
 class JavaShort extends JavaType { mangled = "S"; }
 class JavaCharacter extends JavaType { mangled = "C"; public boxed_name: String = 'Ljava/lang/Character;'; }
 class JavaInteger extends JavaType { mangled = "I"; }
+class JavaObject extends JavaType { constructor(public type: string) { super(); this.mangled = 'T' + type + ';' } }
 class JavaFloat extends JavaType { mangled = "F"; }
 class JavaDouble extends JavaType { mangled = "D"; }
 class JavaLong extends JavaType { mangled = "J"; }
@@ -295,13 +310,13 @@ class JavaMethodType extends JavaType {
 }
 
 class Dynarec {
-	constructor(private pool: ConstantPool, private methodName:string, private methodType: JavaMethodType, private max_stack: number, private max_locals: number, private is_static: boolean) {
-	}
-
 	static getFunctionCode(pool: ConstantPool, methodName: string, methodType: JavaMethodType, max_stack: number, max_locals: number, is_static: boolean, instructions: Instruction[]) {
-		var dynarec = new Dynarec(pool, methodName, methodType, max_stack, max_locals, is_static);
+		var dynarec = new Dynarec0(pool, methodName, methodType, max_stack, max_locals, is_static);
 		dynarec.process(instructions);
 		var func;
+
+		console.log(dynarec.body);
+
 		try {
 			func = Function.apply(null, range(methodType.arguments.length).map(index => 'arg' + index).concat([dynarec.body]));
 		} catch (e) {
@@ -309,6 +324,241 @@ class Dynarec {
 			func = null;
 		}
 		return { func: func, body: dynarec.body };
+	}
+}
+
+class Dynarec0 {
+	constructor(private pool: ConstantPool, private methodName: string, private methodType: JavaMethodType, private max_stack: number, private max_locals: number, private is_static: boolean) {
+	}
+
+	body = '"use strict"; var stack = []; var locals = []; var label = 0;\n';
+
+	writeSentence(text: string) {
+		this.body += text + "\n";
+	}
+
+	process(instructions: Instruction[]) {
+		for (var n = 0; n < this.max_locals; n++) {
+			this.writeSentence("locals[" + n + "] = { value: null };");
+		}
+		for (var n = 0; n < this.methodType.arguments.length; n++) {
+			this.writeSentence("arg" + n + " = { value: arg" + n + " };");
+		}
+		this.writeSentence('while (true) switch (label) {');
+		instructions.forEach(i => {
+			this.processOne(i);
+		});
+		this.writeSentence('}');
+	}
+
+	processOne(i: Instruction): any {
+		var op = i.op, param = i.param, param2 = i.param2;
+		this.body += 'case ' + i.offset + ': ';
+		//console.log(i);
+		switch (op) {
+			case Opcode.aload_0: case Opcode.aload_1: case Opcode.aload_2: case Opcode.aload_3: return this.aload(op - Opcode.aload_0);
+			case Opcode.iload_0: case Opcode.iload_1: case Opcode.iload_2: case Opcode.iload_3: return this.iload(op - Opcode.iload_0);
+			case Opcode.lload_0: case Opcode.lload_1: case Opcode.lload_2: case Opcode.lload_3: return this.lload(op - Opcode.lload_0);
+			case Opcode.fload_0: case Opcode.fload_1: case Opcode.fload_2: case Opcode.fload_3: return this.fload(op - Opcode.fload_0);
+			case Opcode.dload_0: case Opcode.dload_1: case Opcode.dload_2: case Opcode.dload_3: return this.dload(op - Opcode.dload_0);
+
+			case Opcode.aload: return this.aload(param);
+			case Opcode.iload: return this.iload(param);
+			case Opcode.lload: return this.lload(param);
+			case Opcode.fload: return this.fload(param);
+			case Opcode.dload: return this.dload(param);
+
+			case Opcode.aaload: return this.aaload();
+
+			case Opcode.astore_0: case Opcode.astore_1: case Opcode.astore_2: case Opcode.astore_3: return this.astore(op - Opcode.astore_0);
+			case Opcode.istore_0: case Opcode.istore_1: case Opcode.istore_2: case Opcode.istore_3: return this.istore(op - Opcode.istore_0);
+			case Opcode.lstore_0: case Opcode.lstore_1: case Opcode.lstore_2: case Opcode.lstore_3: return this.lstore(op - Opcode.lstore_0);
+			case Opcode.fstore_0: case Opcode.fstore_1: case Opcode.fstore_2: case Opcode.fstore_3: return this.fstore(op - Opcode.fstore_0);
+			case Opcode.dstore_0: case Opcode.dstore_1: case Opcode.dstore_2: case Opcode.dstore_3: return this.dstore(op - Opcode.dstore_0);
+
+			case Opcode.astore: return this.astore(param);
+			case Opcode.istore: return this.istore(param);
+			case Opcode.lstore: return this.lstore(param);
+			case Opcode.fstore: return this.fstore(param);
+			case Opcode.dstore: return this.dstore(param);
+
+			case Opcode.iconst_m1: case Opcode.iconst_0: case Opcode.iconst_1: case Opcode.iconst_2: case Opcode.iconst_3: case Opcode.iconst_4: case Opcode.iconst_5: return this.iconst(op - Opcode.iconst_0);
+
+			case Opcode.ldc2_w: return this.ldc2_w(param);
+			case Opcode.ldc: return this.ldc(param);
+
+			case Opcode.invokespecial: return this.invokespecial(param);
+			case Opcode.invokestatic: return this.invokestatic(param);
+			case Opcode.invokevirtual: return this.invokevirtual(param);
+			case Opcode.getstatic: return this.getstatic(param);
+			case Opcode.Return: return this.Return();
+			case Opcode.ireturn: return this.ireturn();
+			case Opcode.freturn: return this.freturn();
+			case Opcode.dreturn: return this.dreturn();
+			case Opcode.lreturn: return this.lreturn();
+			case Opcode.getstatic: return this.getstatic(param);
+
+			case Opcode.iinc: return this.iinc(param, param2);
+
+			case Opcode.iadd: return this.ibinop('+');
+			case Opcode.isub: return this.ibinop('-');
+			case Opcode.iand: return this.ibinop('&');
+			case Opcode.ishl: return this.ibinop('<<');
+			case Opcode.ishr: return this.ibinop('>>');
+			case Opcode.iushr: return this.ibinop('>>>');
+
+			case Opcode.ladd: return this.call('Long.add', 2);
+			case Opcode.land: return this.call('Long.and', 2);
+			case Opcode.lshl: return this.call('Long.shl', 2);
+			case Opcode.lshr: return this.call('Long.shr', 2);
+			case Opcode.lushr: return this.call('Long.ushr', 2);
+
+			case Opcode.sipush: return this.iconst(param);
+			case Opcode.bipush: return this.iconst(param);
+
+			case Opcode.arraylength: return this.call('Convert.arraylength', 1);
+			case Opcode.new: return this.New(param);
+
+			case Opcode.dup: return this.dup();
+
+			case Opcode.i2b: case Opcode.i2c: case Opcode.i2d: case Opcode.i2f: case Opcode.i2l:
+			case Opcode.i2s: case Opcode.l2d: case Opcode.l2f: case Opcode.l2i:
+				return this.call('Convert.' + Opcode[op], 1);
+
+			case Opcode.baload: return this.baload();
+			case Opcode.bastore: return this.bastore();
+
+			case Opcode.ifeq: return this.ifcond('==', param);
+			case Opcode.ifne: return this.ifcond('!=', param);
+			case Opcode.ifge: return this.ifcond('>=', param);
+			case Opcode.ifgt: return this.ifcond('>', param);
+			case Opcode.ifle: return this.ifcond('<=', param);
+			case Opcode.iflt: return this.ifcond('<', param);
+
+			case Opcode.if_icmpge: return this.ifcond2('>=', param);
+
+			case Opcode.goto: return this.goto(param);
+
+			default:
+				throw (new Error("Not implemented opcode " + i.name + '(' + i.op + ')' + "!"));
+		}
+	}
+
+	private getstatic(index: number) {
+		console.info(this.pool.getType(index));
+		var methodInfo = this.pool.getMethodReference(index);
+		this.writeSentence('stack.push(getstatic(' + methodInfo.name(this.pool) + '));');
+	}
+
+	private New(index: number) {
+		this.writeSentence('stack.push(new ' + this.pool.getClassName(index) + '());');
+	}
+
+	private dup() {
+		this.writeSentence('stack.push(stack[stack.length - 1]);');
+	}
+
+	private call(method: string, count: number) {
+		this.writeSentence('stack.push(' + method + '(stack.splice(stack.length - ' + count + ')));');
+	}
+
+	private call_void(method: string, count: number) {
+		this.writeSentence('' + method + '(stack.splice(stack.length - ' + count + '));');
+	}
+
+	private iinc(local: number, increment: number) {
+		this.writeSentence(this.getref(local) + ' = ' + this.getref(local) + ' + ' + increment);
+	}
+
+	private ibinop(op: string) {
+		this.writeSentence('var l = stack.pop(), r = stack.pop(); stack.push(l ' + op + ' r);');
+	}
+
+	private _invoke(invoketype: string, index: number) {
+		var methodInfo = this.pool.getMethodReference(index);
+		var className = methodInfo.className(this.pool);
+		var name = methodInfo.name(this.pool);
+		var type = methodInfo.type(this.pool)
+		var demangledType = JavaMethodType.demangle(this.pool.getMethodType(index));
+		var argCount = demangledType.arguments.length;
+
+		//if (invoketype == 'static') argCount++;
+
+		if (demangledType.rettype instanceof JavaVoid) {
+			this.call(name, argCount);
+		} else {
+			this.call_void(name, argCount);
+		}
+	}
+
+	private invokevirtual(index: number) { this._invoke('virtual', index); }
+	private invokespecial(index: number) { this._invoke('special', index); }
+	private invokestatic(index: number) { this._invoke('static', index); }
+
+	private getref(index: number) {
+		var argLength = this.methodType.arguments.length;
+		if (index < argLength) {
+			return 'arg' + (index);
+		} else {
+			return 'locals[' + (index - argLength) + ']';
+		}
+	}
+
+	private aload(index: number) {
+		this.writeSentence('stack.push(' + this.getref(index) + ');');
+	}
+	private aaload() {
+		this.writeSentence('var i = stack.pop(), a = stack.pop(); stack.push(a[i]);');
+	}
+
+	private _load(index: number) {
+		this.writeSentence('stack.push(' + this.getref(index) + ');');
+	}
+
+	private iload(index: number) { this._load(index); }
+	private lload(index: number) { this._load(index); }
+	private fload(index: number) { this._load(index); }
+	private dload(index: number) { this._load(index); }
+
+	private astore(index: number) { this.writeSentence(this.getref(index) + '.value = stack.pop();'); }
+	private istore(index: number) { this.writeSentence(this.getref(index) + '.value = stack.pop();'); }
+	private lstore(index: number) { this.writeSentence(this.getref(index) + '.value = stack.pop();'); }
+	private fstore(index: number) { this.writeSentence(this.getref(index) + '.value = stack.pop();'); }
+	private dstore(index: number) { this.writeSentence(this.getref(index) + '.value = stack.pop();'); }
+
+	private iconst(value: number) { this.writeSentence('stack.push(' + value + ');'); }
+	private ldc2_w(index: number) { this.writeSentence('stack.push(' + this.pool.getValue(index) + ');'); }
+	private ldc(index: number) { this.writeSentence('stack.push(' + this.pool.getValue(index) + ');'); }
+
+	private ifcond(cond: string, offset: number) {
+		this.writeSentence('if (stack.pop() ' + cond + ' 0) { label = ' + offset + '; break; }');
+	}
+
+	private ifcond2(cond: string, offset: number) {
+		this.writeSentence('if (stack.pop() ' + cond + ' stack.pop()) { label = ' + offset + '; break; }');
+	}
+
+	private goto(offset: number) {
+		this.writeSentence('{ label = ' + offset + '; break; };');
+	}
+
+	private baload() {
+		this.writeSentence('var i = stack.pop(), aref = stack.pop(); stack.push(aref.value[i]); // baload');
+	}
+
+	private bastore() {
+		this.writeSentence('var val = stack.pop(), i = stack.pop(), aref = stack.pop(); aref.value[i] = val;');
+	}
+
+	private Return() { this.writeSentence('return;'); }
+	private ireturn() { this.writeSentence('return stack.pop();'); }
+	private freturn() { this.writeSentence('return stack.pop();'); }
+	private dreturn() { this.writeSentence('return stack.pop();'); }
+	private lreturn() { this.writeSentence('return stack.pop();'); }
+}
+
+class Dynarec1 {
+	constructor(private pool: ConstantPool, private methodName:string, private methodType: JavaMethodType, private max_stack: number, private max_locals: number, private is_static: boolean) {
 	}
 
 	stack = <Node[]>[];
@@ -328,7 +578,7 @@ class Dynarec {
 	}
 
 	processOne(i: Instruction): any {
-		var op = i.op, param = i.param;
+		var op = i.op, param = i.param, param2 = i.param2;
 		//console.log(i);
 		switch (op) {
 			case Opcode.aload_0: case Opcode.aload_1: case Opcode.aload_2: case Opcode.aload_3: return this.aload(op - Opcode.aload_0);
@@ -342,6 +592,8 @@ class Dynarec {
 			case Opcode.lload: return this.lload(param);
 			case Opcode.fload: return this.fload(param);
 			case Opcode.dload: return this.dload(param);
+
+			case Opcode.aaload: return this.aaload();
 
 			case Opcode.astore_0: case Opcode.astore_1: case Opcode.astore_2: case Opcode.astore_3: return this.astore(op - Opcode.astore_0);
 			case Opcode.istore_0: case Opcode.istore_1: case Opcode.istore_2: case Opcode.istore_3: return this.istore(op - Opcode.istore_0);
@@ -358,16 +610,23 @@ class Dynarec {
 			case Opcode.iconst_m1: case Opcode.iconst_0: case Opcode.iconst_1: case Opcode.iconst_2: case Opcode.iconst_3: case Opcode.iconst_4: case Opcode.iconst_5: return this.iconst(op - Opcode.iconst_0);
 
 			case Opcode.ldc2_w: return this.ldc2_w(param);
+			case Opcode.ldc: return this.ldc(param);
 
 			case Opcode.invokespecial: return this.invokespecial(param);
 			case Opcode.invokestatic: return this.invokestatic(param);
+			case Opcode.invokevirtual: return this.invokevirtual(param);
+			case Opcode.getstatic: return this.getstatic(param);
 			case Opcode.Return: return this.Return();
 			case Opcode.ireturn: return this.ireturn();
 			case Opcode.freturn: return this.freturn();
 			case Opcode.dreturn: return this.dreturn();
 			case Opcode.lreturn: return this.lreturn();
+			case Opcode.getstatic: return this.getstatic(param);
+
+			case Opcode.iinc: return this.iinc(param, param2);
 
 			case Opcode.iadd: return this.ibinop('+');
+			case Opcode.isub: return this.ibinop('-');
 			case Opcode.iand: return this.ibinop('&');
 			case Opcode.ishl: return this.ibinop('<<');
 			case Opcode.ishr: return this.ibinop('>>');
@@ -382,6 +641,11 @@ class Dynarec {
 			case Opcode.sipush: return this.iconst(param);
 			case Opcode.bipush: return this.iconst(param);
 
+			case Opcode.arraylength: return this.call('Convert.arraylength', 1);
+			case Opcode.new: return this.New(param);
+
+			case Opcode.dup: return this.dup();
+
 			case Opcode.i2b: case Opcode.i2c: case Opcode.i2d: case Opcode.i2f: case Opcode.i2l:
 			case Opcode.i2s: case Opcode.l2d: case Opcode.l2f: case Opcode.l2i:
 				return this.call('Convert.' + Opcode[op], 1);
@@ -390,16 +654,43 @@ class Dynarec {
 			case Opcode.bastore: return this.bastore();
 
 			case Opcode.ifeq: return this.ifcond('==', param);
+			case Opcode.ifne: return this.ifcond('!=', param);
+			case Opcode.ifge: return this.ifcond('>=', param);
+			case Opcode.ifgt: return this.ifcond('>', param);
+			case Opcode.ifle: return this.ifcond('<=', param);
+			case Opcode.iflt: return this.ifcond('<', param);
+
+			case Opcode.if_icmpge: return this.ifcond2('>=', param);
+
 			case Opcode.goto: return this.goto(param);
 
 			default:
-				throw(new Error("Not implemented opcode " + i.name + "!"));
+				throw(new Error("Not implemented opcode " + i.name + '(' + i.op + ')' + "!"));
 		}
+	}
+
+	private getstatic(index: number) {
+		console.info(this.pool.getType(index));
+		var methodInfo = this.pool.getMethodReference(index);
+		this.stack.push(new NodeRef(methodInfo.name(this.pool)));
+	}
+
+	private New(index: number) {
+		this.call('new ' + this.pool.getClassName(index), 0);
+	}
+
+	private dup() {
+		var node = this.stack.pop();
+		this.stack.push(new NodeRaw('(var temp = ' + this.stack.push(node.toString()) + ', temp)'));
 	}
 
 	private call(method: string, count: number) {
 		var args = <Node[]>[]; for (var n = 0; n < count; n++) args.push(this.stack.pop());
 		this.stack.push(new NodeCall(method, args.reverse()));
+	}
+
+	private iinc(local: number, increment: number) {
+		this.writeSentence(this.getref(local).toString() + ' = ' + this.getref(local).toString() + ' + ' + increment);
 	}
 
 	private ibinop(op: string) {
@@ -432,13 +723,9 @@ class Dynarec {
 		}
 	}
 
-	private invokespecial(index: number) {
-		this._invoke('special', index);
-	}
-
-	private invokestatic(index: number) {
-		this._invoke('static', index);
-	}
+	private invokevirtual(index: number) { this._invoke('virtual', index); }
+	private invokespecial(index: number) { this._invoke('special', index); }
+	private invokestatic(index: number) { this._invoke('static', index); }
 
 	private getref(index: number) {
 		var argLength = this.methodType.arguments.length;
@@ -450,26 +737,36 @@ class Dynarec {
 	}
 
 	private aload(index: number) { this.stack.push(this.getref(index)); }
+	private aaload() {
+		var index = this.stack.pop();
+		var arrayref = this.stack.pop();
+		this.stack.push(new NodeArrayAccess(arrayref, index));
+	}
 
 	private iload(index: number) { this.stack.push(new NodeCastInt(this.getref(index))); }
 	private lload(index: number) { this.stack.push(new NodeCastLong(this.getref(index))); }
 	private fload(index: number) { this.stack.push(new NodeCastFloat(this.getref(index))); }
 	private dload(index: number) { this.stack.push(new NodeCastDouble(this.getref(index))); }
-	private astore(index: number) { var ref = this.stack.pop(); console.log(this.getref(index).name, '=', ref.toString(), ';'); }
-	private istore(index: number) { var ref = this.stack.pop(); console.log(this.getref(index).name, '=', ref.toString(), ';'); }
-	private lstore(index: number) { var ref = this.stack.pop(); console.log(this.getref(index).name, '=', ref.toString(), ';'); }
-	private fstore(index: number) { var ref = this.stack.pop(); console.log(this.getref(index).name, '=', ref.toString(), ';'); }
-	private dstore(index: number) { var ref = this.stack.pop(); console.log(this.getref(index).name, '=', ref.toString(), ';'); }
+	private astore(index: number) { var ref = this.stack.pop(); this.writeSentence(this.getref(index).name + ' = ' + ref.toString() + ';'); }
+	private istore(index: number) { var ref = this.stack.pop(); this.writeSentence(this.getref(index).name + ' = ' + ref.toString() + ';'); }
+	private lstore(index: number) { var ref = this.stack.pop(); this.writeSentence(this.getref(index).name + ' = ' + ref.toString() + ';'); }
+	private fstore(index: number) { var ref = this.stack.pop(); this.writeSentence(this.getref(index).name + ' = ' + ref.toString() + ';'); }
+	private dstore(index: number) { var ref = this.stack.pop(); this.writeSentence(this.getref(index).name + ' = ' + ref.toString() + ';'); }
 
 	private iconst(value: number) { this.stack.push(new NodeValue(value)); }
-	private ldc2_w(index: number) {
-		this.stack.push(new NodeValue(this.pool.getValue(index)));
-	}
+	private ldc2_w(index: number) { this.stack.push(new NodeValue(this.pool.getValue(index))); }
+	private ldc(index: number) { this.stack.push(new NodeValue(this.pool.getValue(index))); }
 
 	private ifcond(cond: string, offset: number) {
 		var a1 = this.stack.pop();
 		//var a2 = this.stack.pop();
-		console.log('if', '(', a1.toString(), cond, 0, ')', 'goto', offset, ';');
+		this.writeSentence('if (' + a1.toString() + cond + 0 + ') goto ' + offset + ';');
+	}
+
+	private ifcond2(cond: string, offset: number) {
+		var a2 = this.stack.pop();
+		var a1 = this.stack.pop();
+		this.writeSentence('if (' + a1.toString() + cond + a2.toString() + ') goto ' + offset + ';');
 	}
 
 	private goto(offset: number) {
@@ -597,12 +894,18 @@ class JavaClass {
 	private readAttributeInfo(stream: Stream) { return new JavaAttributeInfo(stream.readUInt16BE(), stream.readBytes(stream.readUInt32BE())); }
 }
 var BitsClass = JavaClass.fromStream(new Stream(fs.readFileSync(__dirname + '/test/Bits.class')));
-console.log('----------');
+//var FibClass = JavaClass.fromStream(new Stream(fs.readFileSync(__dirname + '/sample/Fib.class')));
 var getChar = BitsClass.getMethod('getChar').func;
 var array = new Uint8Array([1, 2, 3]);
 var v = 0;
 var start = Date.now();
-for (var n = 0; n < 10000000; n++) {
+//for (var n = 0; n < 10000000; n++) {
+for (var n = 0; n < 10000; n++) {
 	v += getChar(array, 0);
 }
-console.log(Date.now() - start);
+console.log(v, Date.now() - start);
+
+/*
+console.log('----------');
+
+*/
