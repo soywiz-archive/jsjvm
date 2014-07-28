@@ -66,8 +66,11 @@ exports.Stream = Stream;
 var Convert = (function () {
     function Convert() {
     }
-    Convert.i2c = function (value) {
-        return value & 0xFFFF;
+    Convert.CastI = function (value) {
+        return value | 0;
+    };
+    Convert.ConvertIC = function (value) {
+        return (value & 0xFFFF) >>> 0;
     };
     return Convert;
 })();
@@ -402,6 +405,9 @@ var JavaConstantClassReference = (function () {
     function JavaConstantClassReference(pool, indexName) {
         this.indexName = indexName;
     }
+    JavaConstantClassReference.prototype.name = function (pool) {
+        return pool.getString(this.indexName);
+    };
     return JavaConstantClassReference;
 })();
 exports.JavaConstantClassReference = JavaConstantClassReference;
@@ -696,55 +702,24 @@ var NodeArrayAccess = (function (_super) {
     return NodeArrayAccess;
 })(Node);
 
-var NodeCastInt = (function (_super) {
-    __extends(NodeCastInt, _super);
-    function NodeCastInt(node) {
+var NodeCast = (function (_super) {
+    __extends(NodeCast, _super);
+    function NodeCast(type, node) {
         _super.call(this);
+        this.type = type;
         this.node = node;
     }
-    NodeCastInt.prototype.toString = function () {
-        return '(' + this.node.toString() + '|0' + ')';
+    NodeCast.prototype.toString = function () {
+        return 'Convert.Cast' + this.type.mangled + '(' + this.node.toString() + '|0' + ')';
     };
-    return NodeCastInt;
-})(Node);
-var NodeCastLong = (function (_super) {
-    __extends(NodeCastLong, _super);
-    function NodeCastLong(node) {
-        _super.call(this);
-        this.node = node;
-    }
-    NodeCastLong.prototype.toString = function () {
-        return this.node.toString();
-    };
-    return NodeCastLong;
-})(Node);
-var NodeCastDouble = (function (_super) {
-    __extends(NodeCastDouble, _super);
-    function NodeCastDouble(node) {
-        _super.call(this);
-        this.node = node;
-    }
-    NodeCastDouble.prototype.toString = function () {
-        return this.node.toString();
-    };
-    return NodeCastDouble;
-})(Node);
-var NodeCastFloat = (function (_super) {
-    __extends(NodeCastFloat, _super);
-    function NodeCastFloat(node) {
-        _super.call(this);
-        this.node = node;
-    }
-    NodeCastFloat.prototype.toString = function () {
-        return this.node.toString();
-    };
-    return NodeCastFloat;
+    return NodeCast;
 })(Node);
 
 var NodeBinop = (function (_super) {
     __extends(NodeBinop, _super);
-    function NodeBinop(left, op, right) {
+    function NodeBinop(type, left, op, right) {
         _super.call(this);
+        this.type = type;
         this.left = left;
         this.op = op;
         this.right = right;
@@ -757,8 +732,9 @@ var NodeBinop = (function (_super) {
 
 var NodeUnop = (function (_super) {
     __extends(NodeUnop, _super);
-    function NodeUnop(left, l, r) {
+    function NodeUnop(type, left, l, r) {
         _super.call(this);
+        this.type = type;
         this.left = left;
         this.l = l;
         this.r = r;
@@ -868,6 +844,14 @@ var JavaType = (function () {
     return JavaType;
 })();
 
+var JavaRef = (function (_super) {
+    __extends(JavaRef, _super);
+    function JavaRef() {
+        _super.apply(this, arguments);
+        this.mangled = "";
+    }
+    return JavaRef;
+})(JavaType);
 var JavaVoid = (function (_super) {
     __extends(JavaVoid, _super);
     function JavaVoid() {
@@ -1014,6 +998,244 @@ var Dynarec = (function () {
     return Dynarec;
 })();
 
+var InvokeType;
+(function (InvokeType) {
+    InvokeType[InvokeType["special"] = 0] = "special";
+    InvokeType[InvokeType["static"] = 1] = "static";
+    InvokeType[InvokeType["virtual"] = 2] = "virtual";
+})(InvokeType || (InvokeType = {}));
+
+var LocalReference = (function () {
+    function LocalReference(index) {
+        this.index = index;
+    }
+    return LocalReference;
+})();
+
+var DynarecProcessor = (function () {
+    function DynarecProcessor() {
+    }
+    DynarecProcessor.processOne = function (processor, pool, i) {
+        var op = i.op, param = i.param, param2 = i.param2;
+
+        switch (op) {
+            case 42 /* aload_0 */:
+            case 43 /* aload_1 */:
+            case 44 /* aload_2 */:
+            case 45 /* aload_3 */:
+                return processor._load(new JavaRef, op - 42 /* aload_0 */);
+            case 26 /* iload_0 */:
+            case 27 /* iload_1 */:
+            case 28 /* iload_2 */:
+            case 29 /* iload_3 */:
+                return processor._load(new JavaInteger, op - 26 /* iload_0 */);
+            case 30 /* lload_0 */:
+            case 31 /* lload_1 */:
+            case 32 /* lload_2 */:
+            case 33 /* lload_3 */:
+                return processor._load(new JavaLong, op - 30 /* lload_0 */);
+            case 34 /* fload_0 */:
+            case 35 /* fload_1 */:
+            case 36 /* fload_2 */:
+            case 37 /* fload_3 */:
+                return processor._load(new JavaFloat, op - 34 /* fload_0 */);
+            case 38 /* dload_0 */:
+            case 39 /* dload_1 */:
+            case 40 /* dload_2 */:
+            case 41 /* dload_3 */:
+                return processor._load(new JavaDouble, op - 38 /* dload_0 */);
+
+            case 25 /* aload */:
+                return processor._load(new JavaRef, param);
+            case 21 /* iload */:
+                return processor._load(new JavaInteger, param);
+            case 22 /* lload */:
+                return processor._load(new JavaLong, param);
+            case 23 /* fload */:
+                return processor._load(new JavaFloat, param);
+            case 24 /* dload */:
+                return processor._load(new JavaDouble, param);
+
+            case 50 /* aaload */:
+                return processor.aaload();
+            case 83 /* aastore */:
+                return processor.aastore();
+
+            case 75 /* astore_0 */:
+            case 76 /* astore_1 */:
+            case 77 /* astore_2 */:
+            case 78 /* astore_3 */:
+                return processor._store(new JavaRef, op - 75 /* astore_0 */);
+            case 59 /* istore_0 */:
+            case 60 /* istore_1 */:
+            case 61 /* istore_2 */:
+            case 62 /* istore_3 */:
+                return processor._store(new JavaInteger, op - 59 /* istore_0 */);
+            case 63 /* lstore_0 */:
+            case 64 /* lstore_1 */:
+            case 65 /* lstore_2 */:
+            case 66 /* lstore_3 */:
+                return processor._store(new JavaLong, op - 63 /* lstore_0 */);
+            case 67 /* fstore_0 */:
+            case 68 /* fstore_1 */:
+            case 69 /* fstore_2 */:
+            case 70 /* fstore_3 */:
+                return processor._store(new JavaFloat, op - 67 /* fstore_0 */);
+            case 71 /* dstore_0 */:
+            case 72 /* dstore_1 */:
+            case 73 /* dstore_2 */:
+            case 74 /* dstore_3 */:
+                return processor._store(new JavaDouble, op - 71 /* dstore_0 */);
+
+            case 58 /* astore */:
+                return processor._store(new JavaRef, param);
+            case 54 /* istore */:
+                return processor._store(new JavaInteger, param);
+            case 55 /* lstore */:
+                return processor._store(new JavaLong, param);
+            case 56 /* fstore */:
+                return processor._store(new JavaFloat, param);
+            case 57 /* dstore */:
+                return processor._store(new JavaDouble, param);
+
+            case 2 /* iconst_m1 */:
+            case 3 /* iconst_0 */:
+            case 4 /* iconst_1 */:
+            case 5 /* iconst_2 */:
+            case 6 /* iconst_3 */:
+            case 7 /* iconst_4 */:
+            case 8 /* iconst_5 */:
+                return processor._const(new JavaInteger, op - 3 /* iconst_0 */);
+            case 9 /* lconst_0 */:
+            case 10 /* lconst_1 */:
+                return processor._const(new JavaLong, op - 3 /* iconst_0 */);
+            case 17 /* sipush */:
+                return processor._const(new JavaShort, param);
+            case 16 /* bipush */:
+                return processor._const(new JavaByte, param);
+
+            case 20 /* ldc2_w */:
+                return processor.ldc(param, true);
+            case 18 /* ldc */:
+                return processor.ldc(param, false);
+
+            case 183 /* invokespecial */:
+                return processor.invoke(0 /* special */, pool.getMethodReference(param));
+            case 184 /* invokestatic */:
+                return processor.invoke(1 /* static */, pool.getMethodReference(param));
+            case 182 /* invokevirtual */:
+                return processor.invoke(2 /* virtual */, pool.getMethodReference(param));
+            case 178 /* getstatic */:
+                return processor.getstatic(pool.get(param));
+
+            case 177 /* Return */:
+                return processor._return(new JavaVoid);
+            case 172 /* ireturn */:
+                return processor._return(new JavaInteger);
+            case 174 /* freturn */:
+                return processor._return(new JavaFloat);
+            case 175 /* dreturn */:
+                return processor._return(new JavaDouble);
+            case 173 /* lreturn */:
+                return processor._return(new JavaLong);
+
+            case 132 /* iinc */:
+                return processor.iinc(param, param2);
+
+            case 96 /* iadd */:
+                return processor._binop(new JavaInteger, '+');
+            case 100 /* isub */:
+                return processor._binop(new JavaInteger, '-');
+            case 126 /* iand */:
+                return processor._binop(new JavaInteger, '&');
+            case 120 /* ishl */:
+                return processor._binop(new JavaInteger, '<<');
+            case 122 /* ishr */:
+                return processor._binop(new JavaInteger, '>>');
+            case 124 /* iushr */:
+                return processor._binop(new JavaInteger, '>>>');
+
+            case 97 /* ladd */:
+                return processor._binop(new JavaLong, '+');
+            case 101 /* lsub */:
+                return processor._binop(new JavaLong, '+');
+            case 127 /* land */:
+                return processor._binop(new JavaLong, '&');
+            case 121 /* lshl */:
+                return processor._binop(new JavaLong, '<<');
+            case 123 /* lshr */:
+                return processor._binop(new JavaLong, '>>');
+            case 125 /* lushr */:
+                return processor._binop(new JavaLong, '>>>');
+
+            case 51 /* baload */:
+                return processor.baload();
+            case 84 /* bastore */:
+                return processor.bastore();
+
+            case 190 /* arraylength */:
+                return processor.arraylength();
+            case 187 /* new */:
+                return processor._new(pool.get(param));
+
+            case 89 /* dup */:
+                return processor.dup();
+
+            case 145 /* i2b */:
+                return processor.convert(new JavaInteger, new JavaByte);
+            case 146 /* i2c */:
+                return processor.convert(new JavaInteger, new JavaCharacter);
+            case 135 /* i2d */:
+                return processor.convert(new JavaInteger, new JavaDouble);
+            case 134 /* i2f */:
+                return processor.convert(new JavaInteger, new JavaFloat);
+            case 133 /* i2l */:
+                return processor.convert(new JavaInteger, new JavaLong);
+            case 147 /* i2s */:
+                return processor.convert(new JavaInteger, new JavaShort);
+            case 138 /* l2d */:
+                return processor.convert(new JavaLong, new JavaDouble);
+            case 137 /* l2f */:
+                return processor.convert(new JavaLong, new JavaFloat);
+            case 136 /* l2i */:
+                return processor.convert(new JavaLong, new JavaInteger);
+
+            case 153 /* ifeq */:
+                return processor.ifcond('==', param);
+            case 154 /* ifne */:
+                return processor.ifcond('!=', param);
+            case 156 /* ifge */:
+                return processor.ifcond('>=', param);
+            case 157 /* ifgt */:
+                return processor.ifcond('>', param);
+            case 158 /* ifle */:
+                return processor.ifcond('<=', param);
+            case 155 /* iflt */:
+                return processor.ifcond('<', param);
+
+            case 159 /* if_icmpeq */:
+                return processor.ifcond2('==', param);
+            case 160 /* if_icmpne */:
+                return processor.ifcond2('!=', param);
+            case 162 /* if_icmpge */:
+                return processor.ifcond2('>=', param);
+            case 163 /* if_icmpgt */:
+                return processor.ifcond2('>', param);
+            case 164 /* if_icmple */:
+                return processor.ifcond2('<=', param);
+            case 161 /* if_icmplt */:
+                return processor.ifcond2('<', param);
+
+            case 167 /* goto */:
+                return processor.goto(param);
+
+            default:
+                throw (new Error("Not implemented opcode " + i.name + '(' + i.op + ')' + "!"));
+        }
+    };
+    return DynarecProcessor;
+})();
+
 var Dynarec0 = (function () {
     function Dynarec0(pool, methodName, methodType, max_stack, max_locals, is_static) {
         this.pool = pool;
@@ -1038,220 +1260,14 @@ var Dynarec0 = (function () {
         }
         this.writeSentence('while (true) switch (label) {');
         instructions.forEach(function (i) {
+            _this.body += 'case ' + i.offset + ': ';
             _this.processOne(i);
         });
         this.writeSentence('}');
     };
 
     Dynarec0.prototype.processOne = function (i) {
-        var op = i.op, param = i.param, param2 = i.param2;
-        this.body += 'case ' + i.offset + ': ';
-
-        switch (op) {
-            case 42 /* aload_0 */:
-            case 43 /* aload_1 */:
-            case 44 /* aload_2 */:
-            case 45 /* aload_3 */:
-                return this.aload(op - 42 /* aload_0 */);
-            case 26 /* iload_0 */:
-            case 27 /* iload_1 */:
-            case 28 /* iload_2 */:
-            case 29 /* iload_3 */:
-                return this.iload(op - 26 /* iload_0 */);
-            case 30 /* lload_0 */:
-            case 31 /* lload_1 */:
-            case 32 /* lload_2 */:
-            case 33 /* lload_3 */:
-                return this.lload(op - 30 /* lload_0 */);
-            case 34 /* fload_0 */:
-            case 35 /* fload_1 */:
-            case 36 /* fload_2 */:
-            case 37 /* fload_3 */:
-                return this.fload(op - 34 /* fload_0 */);
-            case 38 /* dload_0 */:
-            case 39 /* dload_1 */:
-            case 40 /* dload_2 */:
-            case 41 /* dload_3 */:
-                return this.dload(op - 38 /* dload_0 */);
-
-            case 25 /* aload */:
-                return this.aload(param);
-            case 21 /* iload */:
-                return this.iload(param);
-            case 22 /* lload */:
-                return this.lload(param);
-            case 23 /* fload */:
-                return this.fload(param);
-            case 24 /* dload */:
-                return this.dload(param);
-
-            case 50 /* aaload */:
-                return this.aaload();
-
-            case 75 /* astore_0 */:
-            case 76 /* astore_1 */:
-            case 77 /* astore_2 */:
-            case 78 /* astore_3 */:
-                return this.astore(op - 75 /* astore_0 */);
-            case 59 /* istore_0 */:
-            case 60 /* istore_1 */:
-            case 61 /* istore_2 */:
-            case 62 /* istore_3 */:
-                return this.istore(op - 59 /* istore_0 */);
-            case 63 /* lstore_0 */:
-            case 64 /* lstore_1 */:
-            case 65 /* lstore_2 */:
-            case 66 /* lstore_3 */:
-                return this.lstore(op - 63 /* lstore_0 */);
-            case 67 /* fstore_0 */:
-            case 68 /* fstore_1 */:
-            case 69 /* fstore_2 */:
-            case 70 /* fstore_3 */:
-                return this.fstore(op - 67 /* fstore_0 */);
-            case 71 /* dstore_0 */:
-            case 72 /* dstore_1 */:
-            case 73 /* dstore_2 */:
-            case 74 /* dstore_3 */:
-                return this.dstore(op - 71 /* dstore_0 */);
-
-            case 58 /* astore */:
-                return this.astore(param);
-            case 54 /* istore */:
-                return this.istore(param);
-            case 55 /* lstore */:
-                return this.lstore(param);
-            case 56 /* fstore */:
-                return this.fstore(param);
-            case 57 /* dstore */:
-                return this.dstore(param);
-
-            case 2 /* iconst_m1 */:
-            case 3 /* iconst_0 */:
-            case 4 /* iconst_1 */:
-            case 5 /* iconst_2 */:
-            case 6 /* iconst_3 */:
-            case 7 /* iconst_4 */:
-            case 8 /* iconst_5 */:
-                return this.iconst(op - 3 /* iconst_0 */);
-
-            case 20 /* ldc2_w */:
-                return this.ldc2_w(param);
-            case 18 /* ldc */:
-                return this.ldc(param);
-
-            case 183 /* invokespecial */:
-                return this.invokespecial(param);
-            case 184 /* invokestatic */:
-                return this.invokestatic(param);
-            case 182 /* invokevirtual */:
-                return this.invokevirtual(param);
-            case 178 /* getstatic */:
-                return this.getstatic(param);
-            case 177 /* Return */:
-                return this.Return();
-            case 172 /* ireturn */:
-                return this.ireturn();
-            case 174 /* freturn */:
-                return this.freturn();
-            case 175 /* dreturn */:
-                return this.dreturn();
-            case 173 /* lreturn */:
-                return this.lreturn();
-            case 178 /* getstatic */:
-                return this.getstatic(param);
-
-            case 132 /* iinc */:
-                return this.iinc(param, param2);
-
-            case 96 /* iadd */:
-                return this.ibinop('+');
-            case 100 /* isub */:
-                return this.ibinop('-');
-            case 126 /* iand */:
-                return this.ibinop('&');
-            case 120 /* ishl */:
-                return this.ibinop('<<');
-            case 122 /* ishr */:
-                return this.ibinop('>>');
-            case 124 /* iushr */:
-                return this.ibinop('>>>');
-
-            case 97 /* ladd */:
-                return this.call('Long.add', 2);
-            case 127 /* land */:
-                return this.call('Long.and', 2);
-            case 121 /* lshl */:
-                return this.call('Long.shl', 2);
-            case 123 /* lshr */:
-                return this.call('Long.shr', 2);
-            case 125 /* lushr */:
-                return this.call('Long.ushr', 2);
-
-            case 17 /* sipush */:
-                return this.iconst(param);
-            case 16 /* bipush */:
-                return this.iconst(param);
-
-            case 190 /* arraylength */:
-                return this.call('Convert.arraylength', 1);
-            case 187 /* new */:
-                return this.New(param);
-
-            case 89 /* dup */:
-                return this.dup();
-
-            case 145 /* i2b */:
-            case 146 /* i2c */:
-            case 135 /* i2d */:
-            case 134 /* i2f */:
-            case 133 /* i2l */:
-            case 147 /* i2s */:
-            case 138 /* l2d */:
-            case 137 /* l2f */:
-            case 136 /* l2i */:
-                return this.call('Convert.' + Opcode[op], 1);
-
-            case 51 /* baload */:
-                return this.baload();
-            case 84 /* bastore */:
-                return this.bastore();
-
-            case 153 /* ifeq */:
-                return this.ifcond('==', param);
-            case 154 /* ifne */:
-                return this.ifcond('!=', param);
-            case 156 /* ifge */:
-                return this.ifcond('>=', param);
-            case 157 /* ifgt */:
-                return this.ifcond('>', param);
-            case 158 /* ifle */:
-                return this.ifcond('<=', param);
-            case 155 /* iflt */:
-                return this.ifcond('<', param);
-
-            case 162 /* if_icmpge */:
-                return this.ifcond2('>=', param);
-
-            case 167 /* goto */:
-                return this.goto(param);
-
-            default:
-                throw (new Error("Not implemented opcode " + i.name + '(' + i.op + ')' + "!"));
-        }
-    };
-
-    Dynarec0.prototype.getstatic = function (index) {
-        console.info(this.pool.getType(index));
-        var methodInfo = this.pool.getMethodReference(index);
-        this.writeSentence('stack.push(getstatic(' + methodInfo.name(this.pool) + ')); // getstatic');
-    };
-
-    Dynarec0.prototype.New = function (index) {
-        this.writeSentence('stack.push(new ' + this.pool.getClassName(index) + '()); // new');
-    };
-
-    Dynarec0.prototype.dup = function () {
-        this.writeSentence('stack.push(stack[stack.length - 1]); // dup');
+        DynarecProcessor.processOne(this, this.pool, i);
     };
 
     Dynarec0.prototype.call = function (method, count) {
@@ -1260,40 +1276,6 @@ var Dynarec0 = (function () {
 
     Dynarec0.prototype.call_void = function (method, count) {
         this.writeSentence('' + method + '(stack.splice(stack.length - ' + count + ')); // call_void');
-    };
-
-    Dynarec0.prototype.iinc = function (local, increment) {
-        this.writeSentence(this.getref(local) + ' = ' + this.getref(local) + ' + ' + increment + '; // iinc');
-    };
-
-    Dynarec0.prototype.ibinop = function (op) {
-        this.writeSentence('var r = stack.pop(), l = stack.pop(); stack.push(l ' + op + ' r); // ibinop(' + op + ')');
-    };
-
-    Dynarec0.prototype._invoke = function (invoketype, index) {
-        var methodInfo = this.pool.getMethodReference(index);
-        var className = methodInfo.className(this.pool);
-        var name = methodInfo.name(this.pool);
-        var type = methodInfo.type(this.pool);
-        var demangledType = JavaMethodType.demangle(this.pool.getMethodType(index));
-        var argCount = demangledType.arguments.length;
-
-        //if (invoketype == 'static') argCount++;
-        if (demangledType.rettype instanceof JavaVoid) {
-            this.call(name, argCount);
-        } else {
-            this.call_void(name, argCount);
-        }
-    };
-
-    Dynarec0.prototype.invokevirtual = function (index) {
-        this._invoke('virtual', index);
-    };
-    Dynarec0.prototype.invokespecial = function (index) {
-        this._invoke('special', index);
-    };
-    Dynarec0.prototype.invokestatic = function (index) {
-        this._invoke('static', index);
     };
 
     Dynarec0.prototype.getref = function (index) {
@@ -1305,90 +1287,90 @@ var Dynarec0 = (function () {
         }
     };
 
-    Dynarec0.prototype.aload = function (index) {
-        this.writeSentence('stack.push(' + this.getref(index) + '); // aload');
+    Dynarec0.prototype._load = function (type, index) {
+        if (type instanceof JavaRef) {
+            this.writeSentence('stack.push(' + this.getref(index) + '); // aload');
+        } else {
+            this.writeSentence('stack.push(' + this.getref(index) + '.value); // _load');
+        }
+    };
+    Dynarec0.prototype._return = function (type) {
+        if (type instanceof JavaVoid) {
+            this.writeSentence('return;');
+        } else {
+            this.writeSentence('return stack.pop(); // _return');
+        }
+    };
+
+    Dynarec0.prototype.invoke = function (invokeType, methodInfo) {
+        var className = methodInfo.className(this.pool);
+        var name = methodInfo.name(this.pool);
+        var type = methodInfo.type(this.pool);
+        var demangledType = JavaMethodType.demangle(methodInfo.type(this.pool));
+        var argCount = demangledType.arguments.length;
+
+        //if (invoketype == 'static') argCount++;
+        if (demangledType.rettype instanceof JavaVoid) {
+            this.call(name, argCount);
+        } else {
+            this.call_void(name, argCount);
+        }
+    };
+
+    Dynarec0.prototype._store = function (type, index) {
+        this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store');
+    };
+    Dynarec0.prototype.convert = function (from, to) {
+        this.writeSentence('stack.push(Convert.Convert' + from.mangled + to.mangled + '(stack.pop())); // _const');
+    };
+    Dynarec0.prototype._const = function (type, value) {
+        this.writeSentence('stack.push(' + value + '); // _const');
     };
     Dynarec0.prototype.aaload = function () {
         this.writeSentence('var i = stack.pop(), aref = stack.pop(); stack.push(aref.value[i]); // aaload');
     };
-
-    Dynarec0.prototype._load = function (index) {
-        this.writeSentence('stack.push(' + this.getref(index) + '.value); // _load');
+    Dynarec0.prototype.aastore = function () {
+        throw (new Error("Not implemented!"));
     };
-
-    Dynarec0.prototype.iload = function (index) {
-        this._load(index);
-    };
-    Dynarec0.prototype.lload = function (index) {
-        this._load(index);
-    };
-    Dynarec0.prototype.fload = function (index) {
-        this._load(index);
-    };
-    Dynarec0.prototype.dload = function (index) {
-        this._load(index);
-    };
-
-    Dynarec0.prototype.astore = function (index) {
-        this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store');
-    };
-    Dynarec0.prototype.istore = function (index) {
-        this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store');
-    };
-    Dynarec0.prototype.lstore = function (index) {
-        this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store');
-    };
-    Dynarec0.prototype.fstore = function (index) {
-        this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store');
-    };
-    Dynarec0.prototype.dstore = function (index) {
-        this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store');
-    };
-
-    Dynarec0.prototype.iconst = function (value) {
-        this.writeSentence('stack.push(' + value + '); // iconst');
-    };
-    Dynarec0.prototype.ldc2_w = function (index) {
-        this.writeSentence('stack.push(' + this.pool.getValue(index) + '); // ldc2_w');
-    };
-    Dynarec0.prototype.ldc = function (index) {
+    Dynarec0.prototype.ldc = function (index, wide) {
         this.writeSentence('stack.push(' + this.pool.getValue(index) + '); // ldc');
     };
-
-    Dynarec0.prototype.ifcond = function (cond, offset) {
-        this.writeSentence('if (stack.pop() ' + cond + ' 0) { label = ' + offset + '; break; } // ifcond(' + cond + ')');
+    Dynarec0.prototype.getstatic = function (methodInfo) {
+        this.writeSentence('stack.push(getstatic(' + methodInfo.name(this.pool) + ')); // getstatic');
     };
-
-    Dynarec0.prototype.ifcond2 = function (cond, offset) {
-        this.writeSentence('if (stack.pop() ' + cond + ' stack.pop()) { label = ' + offset + '; break; } // ifcond2(' + cond + ')');
+    Dynarec0.prototype._binop = function (type, op) {
+        if (type instanceof JavaInteger) {
+            this.writeSentence('var r = stack.pop(), l = stack.pop(); stack.push(l ' + op + ' r); // ibinop(' + op + ')');
+        } else {
+            this.writeSentence('var r = stack.pop(), l = stack.pop(); stack.push(Long["' + op + '"](l, r)); // lbinop(' + op + ')');
+        }
     };
-
+    Dynarec0.prototype.ifcond = function (op, offset) {
+        this.writeSentence('if (stack.pop() ' + op + ' 0) { label = ' + offset + '; break; } // ifcond(' + op + ')');
+    };
+    Dynarec0.prototype.ifcond2 = function (op, offset) {
+        this.writeSentence('if (stack.pop() ' + op + ' stack.pop()) { label = ' + offset + '; break; } // ifcond2(' + op + ')');
+    };
     Dynarec0.prototype.goto = function (offset) {
         this.writeSentence('{ label = ' + offset + '; break; }; // goto');
     };
-
+    Dynarec0.prototype.iinc = function (local, increment) {
+        this.writeSentence(this.getref(local) + ' = ' + this.getref(local) + ' + ' + increment + '; // iinc');
+    };
     Dynarec0.prototype.baload = function () {
         this.writeSentence('var i = stack.pop(), aref = stack.pop(); stack.push(aref.value[i]); // baload');
     };
-
     Dynarec0.prototype.bastore = function () {
         this.writeSentence('var val = stack.pop(), i = stack.pop(), aref = stack.pop(); aref.value[i] = val; // bastore');
     };
-
-    Dynarec0.prototype.Return = function () {
-        this.writeSentence('return;');
+    Dynarec0.prototype.arraylength = function () {
+        this.writeSentence('stack.push(Convert.arraylength(stack.pop())); // arraylength');
     };
-    Dynarec0.prototype.ireturn = function () {
-        this.writeSentence('return stack.pop(); // _return');
+    Dynarec0.prototype._new = function (clazz) {
+        this.writeSentence('stack.push(new ' + this.pool.getString(clazz.indexName) + '()); // new');
     };
-    Dynarec0.prototype.freturn = function () {
-        this.writeSentence('return stack.pop(); // _return');
-    };
-    Dynarec0.prototype.dreturn = function () {
-        this.writeSentence('return stack.pop(); // _return');
-    };
-    Dynarec0.prototype.lreturn = function () {
-        this.writeSentence('return stack.pop(); // _return');
+    Dynarec0.prototype.dup = function () {
+        this.writeSentence('stack.push(stack[stack.length - 1]); // dup');
     };
     return Dynarec0;
 })();
@@ -1420,239 +1402,65 @@ var Dynarec1 = (function () {
     };
 
     Dynarec1.prototype.processOne = function (i) {
-        var op = i.op, param = i.param, param2 = i.param2;
+        DynarecProcessor.processOne(this, this.pool, i);
+    };
 
-        switch (op) {
-            case 42 /* aload_0 */:
-            case 43 /* aload_1 */:
-            case 44 /* aload_2 */:
-            case 45 /* aload_3 */:
-                return this.aload(op - 42 /* aload_0 */);
-            case 26 /* iload_0 */:
-            case 27 /* iload_1 */:
-            case 28 /* iload_2 */:
-            case 29 /* iload_3 */:
-                return this.iload(op - 26 /* iload_0 */);
-            case 30 /* lload_0 */:
-            case 31 /* lload_1 */:
-            case 32 /* lload_2 */:
-            case 33 /* lload_3 */:
-                return this.lload(op - 30 /* lload_0 */);
-            case 34 /* fload_0 */:
-            case 35 /* fload_1 */:
-            case 36 /* fload_2 */:
-            case 37 /* fload_3 */:
-                return this.fload(op - 34 /* fload_0 */);
-            case 38 /* dload_0 */:
-            case 39 /* dload_1 */:
-            case 40 /* dload_2 */:
-            case 41 /* dload_3 */:
-                return this.dload(op - 38 /* dload_0 */);
-
-            case 25 /* aload */:
-                return this.aload(param);
-            case 21 /* iload */:
-                return this.iload(param);
-            case 22 /* lload */:
-                return this.lload(param);
-            case 23 /* fload */:
-                return this.fload(param);
-            case 24 /* dload */:
-                return this.dload(param);
-
-            case 50 /* aaload */:
-                return this.aaload();
-
-            case 75 /* astore_0 */:
-            case 76 /* astore_1 */:
-            case 77 /* astore_2 */:
-            case 78 /* astore_3 */:
-                return this.astore(op - 75 /* astore_0 */);
-            case 59 /* istore_0 */:
-            case 60 /* istore_1 */:
-            case 61 /* istore_2 */:
-            case 62 /* istore_3 */:
-                return this.istore(op - 59 /* istore_0 */);
-            case 63 /* lstore_0 */:
-            case 64 /* lstore_1 */:
-            case 65 /* lstore_2 */:
-            case 66 /* lstore_3 */:
-                return this.lstore(op - 63 /* lstore_0 */);
-            case 67 /* fstore_0 */:
-            case 68 /* fstore_1 */:
-            case 69 /* fstore_2 */:
-            case 70 /* fstore_3 */:
-                return this.fstore(op - 67 /* fstore_0 */);
-            case 71 /* dstore_0 */:
-            case 72 /* dstore_1 */:
-            case 73 /* dstore_2 */:
-            case 74 /* dstore_3 */:
-                return this.dstore(op - 71 /* dstore_0 */);
-
-            case 58 /* astore */:
-                return this.astore(param);
-            case 54 /* istore */:
-                return this.istore(param);
-            case 55 /* lstore */:
-                return this.lstore(param);
-            case 56 /* fstore */:
-                return this.fstore(param);
-            case 57 /* dstore */:
-                return this.dstore(param);
-
-            case 2 /* iconst_m1 */:
-            case 3 /* iconst_0 */:
-            case 4 /* iconst_1 */:
-            case 5 /* iconst_2 */:
-            case 6 /* iconst_3 */:
-            case 7 /* iconst_4 */:
-            case 8 /* iconst_5 */:
-                return this.iconst(op - 3 /* iconst_0 */);
-
-            case 20 /* ldc2_w */:
-                return this.ldc2_w(param);
-            case 18 /* ldc */:
-                return this.ldc(param);
-
-            case 183 /* invokespecial */:
-                return this.invokespecial(param);
-            case 184 /* invokestatic */:
-                return this.invokestatic(param);
-            case 182 /* invokevirtual */:
-                return this.invokevirtual(param);
-            case 178 /* getstatic */:
-                return this.getstatic(param);
-            case 177 /* Return */:
-                return this.Return();
-            case 172 /* ireturn */:
-                return this.ireturn();
-            case 174 /* freturn */:
-                return this.freturn();
-            case 175 /* dreturn */:
-                return this.dreturn();
-            case 173 /* lreturn */:
-                return this.lreturn();
-            case 178 /* getstatic */:
-                return this.getstatic(param);
-
-            case 132 /* iinc */:
-                return this.iinc(param, param2);
-
-            case 96 /* iadd */:
-                return this.ibinop('+');
-            case 100 /* isub */:
-                return this.ibinop('-');
-            case 126 /* iand */:
-                return this.ibinop('&');
-            case 120 /* ishl */:
-                return this.ibinop('<<');
-            case 122 /* ishr */:
-                return this.ibinop('>>');
-            case 124 /* iushr */:
-                return this.ibinop('>>>');
-
-            case 97 /* ladd */:
-                return this.call('Long.add', 2);
-            case 127 /* land */:
-                return this.call('Long.and', 2);
-            case 121 /* lshl */:
-                return this.call('Long.shl', 2);
-            case 123 /* lshr */:
-                return this.call('Long.shr', 2);
-            case 125 /* lushr */:
-                return this.call('Long.ushr', 2);
-
-            case 17 /* sipush */:
-                return this.iconst(param);
-            case 16 /* bipush */:
-                return this.iconst(param);
-
-            case 190 /* arraylength */:
-                return this.call('Convert.arraylength', 1);
-            case 187 /* new */:
-                return this.New(param);
-
-            case 89 /* dup */:
-                return this.dup();
-
-            case 145 /* i2b */:
-            case 146 /* i2c */:
-            case 135 /* i2d */:
-            case 134 /* i2f */:
-            case 133 /* i2l */:
-            case 147 /* i2s */:
-            case 138 /* l2d */:
-            case 137 /* l2f */:
-            case 136 /* l2i */:
-                return this.call('Convert.' + Opcode[op], 1);
-
-            case 51 /* baload */:
-                return this.baload();
-            case 84 /* bastore */:
-                return this.bastore();
-
-            case 153 /* ifeq */:
-                return this.ifcond('==', param);
-            case 154 /* ifne */:
-                return this.ifcond('!=', param);
-            case 156 /* ifge */:
-                return this.ifcond('>=', param);
-            case 157 /* ifgt */:
-                return this.ifcond('>', param);
-            case 158 /* ifle */:
-                return this.ifcond('<=', param);
-            case 155 /* iflt */:
-                return this.ifcond('<', param);
-
-            case 162 /* if_icmpge */:
-                return this.ifcond2('>=', param);
-
-            case 167 /* goto */:
-                return this.goto(param);
-
-            default:
-                throw (new Error("Not implemented opcode " + i.name + '(' + i.op + ')' + "!"));
+    Dynarec1.prototype.getref = function (index) {
+        var argLength = this.methodType.arguments.length;
+        if (index < argLength) {
+            return new NodeRef('arg' + (index) + '');
+        } else {
+            return new NodeRef('local_' + (index - argLength));
         }
     };
 
-    Dynarec1.prototype.getstatic = function (index) {
-        console.info(this.pool.getType(index));
-        var methodInfo = this.pool.getMethodReference(index);
-        this.stack.push(new NodeRef(methodInfo.name(this.pool)));
+    Dynarec1.prototype._load = function (type, index) {
+        if (type instanceof JavaRef) {
+            this.stack.push(this.getref(index));
+        } else {
+            this.stack.push(new NodeCast(type, this.getref(index)));
+        }
     };
 
-    Dynarec1.prototype.New = function (index) {
-        this.call('new ' + this.pool.getClassName(index), 0);
+    Dynarec1.prototype._store = function (type, index) {
+        var ref = this.stack.pop();
+        this.writeSentence(this.getref(index).name + ' = ' + ref.toString() + ';');
     };
 
-    Dynarec1.prototype.dup = function () {
-        var node = this.stack.pop();
-        this.stack.push(new NodeRaw('(var temp = ' + this.stack.push(node.toString()) + ', temp)'));
+    Dynarec1.prototype._return = function (type) {
+        if (type instanceof JavaVoid) {
+            this.writeSentence('return;');
+        } else {
+            this.writeSentence('return ' + this.stack.pop().toString() + ';');
+        }
     };
 
-    Dynarec1.prototype.call = function (method, count) {
-        var args = [];
-        for (var n = 0; n < count; n++)
-            args.push(this.stack.pop());
-        this.stack.push(new NodeCall(method, args.reverse()));
+    Dynarec1.prototype.convert = function (from, to) {
+        this.stack.push(new NodeCall('Convert.Convert' + from.mangled + to.mangled, [this.stack.pop()]));
     };
 
-    Dynarec1.prototype.iinc = function (local, increment) {
-        this.writeSentence(this.getref(local).toString() + ' = ' + this.getref(local).toString() + ' + ' + increment);
+    Dynarec1.prototype._const = function (type, value) {
+        this.stack.push(new NodeValue(value));
     };
 
-    Dynarec1.prototype.ibinop = function (op) {
-        var right = this.stack.pop();
-        var left = this.stack.pop();
-        this.stack.push(new NodeBinop(left, op, right));
+    Dynarec1.prototype.aaload = function () {
+        var index = this.stack.pop();
+        var arrayref = this.stack.pop();
+        this.stack.push(new NodeArrayAccess(arrayref, index));
+    };
+    Dynarec1.prototype.aastore = function () {
+        throw (new Error("Not implemented"));
     };
 
-    Dynarec1.prototype._invoke = function (invoketype, index) {
-        var methodInfo = this.pool.getMethodReference(index);
+    Dynarec1.prototype.ldc = function (index, wide) {
+        this.stack.push(new NodeValue(this.pool.getValue(index)));
+    };
+
+    Dynarec1.prototype.invoke = function (invokeType, methodInfo) {
         var className = methodInfo.className(this.pool);
         var name = methodInfo.name(this.pool);
         var type = methodInfo.type(this.pool);
-        var demangledType = JavaMethodType.demangle(this.pool.getMethodType(index));
+        var demangledType = JavaMethodType.demangle(methodInfo.type(this.pool));
         var argCount = demangledType.arguments.length;
         var args = [];
 
@@ -1669,92 +1477,35 @@ var Dynarec1 = (function () {
         }
     };
 
-    Dynarec1.prototype.invokevirtual = function (index) {
-        this._invoke('virtual', index);
-    };
-    Dynarec1.prototype.invokespecial = function (index) {
-        this._invoke('special', index);
-    };
-    Dynarec1.prototype.invokestatic = function (index) {
-        this._invoke('static', index);
+    Dynarec1.prototype.getstatic = function (methodInfo) {
+        this.stack.push(new NodeRef(methodInfo.name(this.pool)));
     };
 
-    Dynarec1.prototype.getref = function (index) {
-        var argLength = this.methodType.arguments.length;
-        if (index < argLength) {
-            return new NodeRef('arg' + (index) + '');
-        } else {
-            return new NodeRef('local_' + (index - argLength));
-        }
+    Dynarec1.prototype._binop = function (type, op) {
+        var right = this.stack.pop();
+        var left = this.stack.pop();
+        this.stack.push(new NodeBinop(type, left, op, right));
     };
 
-    Dynarec1.prototype.aload = function (index) {
-        this.stack.push(this.getref(index));
-    };
-    Dynarec1.prototype.aaload = function () {
-        var index = this.stack.pop();
-        var arrayref = this.stack.pop();
-        this.stack.push(new NodeArrayAccess(arrayref, index));
-    };
-
-    Dynarec1.prototype.iload = function (index) {
-        this.stack.push(new NodeCastInt(this.getref(index)));
-    };
-    Dynarec1.prototype.lload = function (index) {
-        this.stack.push(new NodeCastLong(this.getref(index)));
-    };
-    Dynarec1.prototype.fload = function (index) {
-        this.stack.push(new NodeCastFloat(this.getref(index)));
-    };
-    Dynarec1.prototype.dload = function (index) {
-        this.stack.push(new NodeCastDouble(this.getref(index)));
-    };
-    Dynarec1.prototype.astore = function (index) {
-        var ref = this.stack.pop();
-        this.writeSentence(this.getref(index).name + ' = ' + ref.toString() + ';');
-    };
-    Dynarec1.prototype.istore = function (index) {
-        var ref = this.stack.pop();
-        this.writeSentence(this.getref(index).name + ' = ' + ref.toString() + ';');
-    };
-    Dynarec1.prototype.lstore = function (index) {
-        var ref = this.stack.pop();
-        this.writeSentence(this.getref(index).name + ' = ' + ref.toString() + ';');
-    };
-    Dynarec1.prototype.fstore = function (index) {
-        var ref = this.stack.pop();
-        this.writeSentence(this.getref(index).name + ' = ' + ref.toString() + ';');
-    };
-    Dynarec1.prototype.dstore = function (index) {
-        var ref = this.stack.pop();
-        this.writeSentence(this.getref(index).name + ' = ' + ref.toString() + ';');
-    };
-
-    Dynarec1.prototype.iconst = function (value) {
-        this.stack.push(new NodeValue(value));
-    };
-    Dynarec1.prototype.ldc2_w = function (index) {
-        this.stack.push(new NodeValue(this.pool.getValue(index)));
-    };
-    Dynarec1.prototype.ldc = function (index) {
-        this.stack.push(new NodeValue(this.pool.getValue(index)));
-    };
-
-    Dynarec1.prototype.ifcond = function (cond, offset) {
+    Dynarec1.prototype.ifcond = function (op, offset) {
         var a1 = this.stack.pop();
 
         //var a2 = this.stack.pop();
-        this.writeSentence('if (' + a1.toString() + cond + 0 + ') goto ' + offset + ';');
+        this.writeSentence('if (' + a1.toString() + op + ' ' + 0 + ') goto ' + offset + ';');
     };
 
-    Dynarec1.prototype.ifcond2 = function (cond, offset) {
+    Dynarec1.prototype.ifcond2 = function (op, offset) {
         var a2 = this.stack.pop();
         var a1 = this.stack.pop();
-        this.writeSentence('if (' + a1.toString() + cond + a2.toString() + ') goto ' + offset + ';');
+        this.writeSentence('if (' + a1.toString() + op + a2.toString() + ') goto ' + offset + ';');
     };
 
     Dynarec1.prototype.goto = function (offset) {
         this.writeSentence('goto L_' + offset + ';');
+    };
+
+    Dynarec1.prototype.iinc = function (local, increment) {
+        this.writeSentence(this.getref(local).toString() + ' = ' + this.getref(local).toString() + ' + ' + increment);
     };
 
     Dynarec1.prototype.baload = function () {
@@ -1770,21 +1521,22 @@ var Dynarec1 = (function () {
         this.writeSentence(ref.toString() + '[' + index.toString() + '] = ' + value.toString());
     };
 
-    Dynarec1.prototype.Return = function () {
-        this.writeSentence('return;');
+    Dynarec1.prototype.arraylength = function () {
+        this.stack.push(new NodeCall('Convert.arraylength', [this.stack.pop()]));
+    };
+    Dynarec1.prototype._new = function (clazz) {
+        this.call('new ' + clazz.name(this.pool), 0);
+    };
+    Dynarec1.prototype.dup = function () {
+        var node = this.stack.pop();
+        this.stack.push(new NodeRaw('(var temp = ' + this.stack.push(node.toString()) + ', temp)'));
     };
 
-    Dynarec1.prototype.ireturn = function () {
-        this.writeSentence('return ' + this.stack.pop().toString() + ';');
-    };
-    Dynarec1.prototype.freturn = function () {
-        this.writeSentence('return ' + this.stack.pop().toString() + ';');
-    };
-    Dynarec1.prototype.dreturn = function () {
-        this.writeSentence('return ' + this.stack.pop().toString() + ';');
-    };
-    Dynarec1.prototype.lreturn = function () {
-        this.writeSentence('return ' + this.stack.pop().toString() + ';');
+    Dynarec1.prototype.call = function (method, count) {
+        var args = [];
+        for (var n = 0; n < count; n++)
+            args.push(this.stack.pop());
+        this.stack.push(new NodeCall(method, args.reverse()));
     };
     return Dynarec1;
 })();
