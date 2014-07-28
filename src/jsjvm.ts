@@ -21,6 +21,7 @@ export class Stream {
 export class Convert {
 	static CastI(value: number) { return value | 0; }
 	static ConvertIC(value: number) { return (value & 0xFFFF) >>> 0; }
+	static ConvertIS(value: number) { return (value & 0xFFFF) | 0; } // @CHECK
 }
 
 global['Convert'] = Convert;
@@ -48,6 +49,276 @@ export enum Opcode {
 	'instanceof' = 0xc1, monitorenter = 0xc2, monitorexit = 0xc3, wide = 0xc4, multianewarray = 0xc5, ifnull = 0xc6, ifnonnull = 0xc7, goto_w = 0xc8, jsr_w = 0xc9,
 	breakpoint = 0xca, impdep1 = 0xfe, impdep2 = 0xff
 }
+
+export enum ParamType { Void, Special, U8, S8, U16, S16, U32, S32, U8_S8, U16_U8, TableSwitch, LookupSwitch }
+
+export class OpcodeInfo {
+	constructor(public opcode: Opcode, public param: ParamType, public stackPop: string[], public stackPush: string[], public description: string) { }
+	get deltaStack() { return this.stackPush.length - this.stackPop.length; }
+}
+
+var opcodeInfoList = [
+	new OpcodeInfo(Opcode.nop, ParamType.Void, [], [], 'perform no operation'),
+	new OpcodeInfo(Opcode.aconst_null, ParamType.Void, [], ['null'], 'push a null reference onto the stack'),
+	new OpcodeInfo(Opcode.iconst_m1, ParamType.Void, [], ['-1'], 'load the int value -1 onto the stack'),
+	new OpcodeInfo(Opcode.iconst_0, ParamType.Void, [], ['0'], 'load the int value 0 onto the stack'),
+	new OpcodeInfo(Opcode.iconst_1, ParamType.Void, [], ['1'], 'load the int value 1 onto the stack'),
+	new OpcodeInfo(Opcode.iconst_2, ParamType.Void, [], ['2'], 'load the int value 2 onto the stack'),
+	new OpcodeInfo(Opcode.iconst_3, ParamType.Void, [], ['3'], 'load the int value 3 onto the stack'),
+	new OpcodeInfo(Opcode.iconst_4, ParamType.Void, [], ['4'], 'load the int value 4 onto the stack'),
+	new OpcodeInfo(Opcode.iconst_5, ParamType.Void, [], ['5'], 'load the int value 5 onto the stack'),
+	new OpcodeInfo(Opcode.lconst_0, ParamType.Void, [], ['0L'], 'push the long 0 onto the stack'),
+	new OpcodeInfo(Opcode.lconst_1, ParamType.Void, [], ['1L'], 'push the long 1 onto the stack'),
+	new OpcodeInfo(Opcode.fconst_0, ParamType.Void, [], ['0.0f'], 'push 0.0f on the stack'),
+	new OpcodeInfo(Opcode.fconst_1, ParamType.Void, [], ['1.0f'], 'push 1.0f on the stack'),
+	new OpcodeInfo(Opcode.fconst_2, ParamType.Void, [], ['2.0f'], 'push 2.0f on the stack'),
+	new OpcodeInfo(Opcode.dconst_0, ParamType.Void, [], ['0.0'], 'push the constant 0.0 onto the stack'),
+	new OpcodeInfo(Opcode.dconst_1, ParamType.Void, [], ['1.0'], 'push the constant 1.0 onto the stack'),
+	new OpcodeInfo(Opcode.bipush, ParamType.S8, [], ['value'], 'push a byte onto the stack as an integer value'),
+	new OpcodeInfo(Opcode.sipush, ParamType.S16, [], ['value'], 'push a short onto the stack'),
+	new OpcodeInfo(Opcode.ldc, ParamType.U8, [], ['value'], 'push a constant #index from a constant pool (String, int or float) onto the stack'),
+	new OpcodeInfo(Opcode.ldc_w, ParamType.U16, [], ['value'], 'push a constant #index from a constant pool (String, int or float) onto the stack (wide index is constructed as indexbyte1 << 8 + indexbyte2)'),
+	new OpcodeInfo(Opcode.ldc2_w, ParamType.U16, [], ['value'], 'push a constant #index from a constant pool (double or long) onto the stack (wide index is constructed as indexbyte1 << 8 + indexbyte2)'),
+
+	new OpcodeInfo(Opcode.iload, ParamType.U8, [], ['value'], 'load an int value from a local variable #index'),
+	new OpcodeInfo(Opcode.lload, ParamType.U8, [], ['value'], 'load a long value from a local variable #index'),
+	new OpcodeInfo(Opcode.fload, ParamType.U8, [], ['value'], 'load a float value from a local variable #index'),
+	new OpcodeInfo(Opcode.dload, ParamType.U8, [], ['value'], 'load a double value from a local variable #index'),
+	new OpcodeInfo(Opcode.aload, ParamType.U8, [], ['objectref'], 'load a reference onto the stack from a local variable #index'),
+
+	new OpcodeInfo(Opcode.iload_0, ParamType.Void, [], ['value'], 'load an int value from local variable 0'),
+	new OpcodeInfo(Opcode.iload_1, ParamType.Void, [], ['value'], 'load an int value from local variable 1'),
+	new OpcodeInfo(Opcode.iload_2, ParamType.Void, [], ['value'], 'load an int value from local variable 2'),
+	new OpcodeInfo(Opcode.iload_3, ParamType.Void, [], ['value'], 'load an int value from local variable 3'),
+
+	new OpcodeInfo(Opcode.lload_0, ParamType.Void, [], ['value'], 'load a long value from local variable 0'),
+	new OpcodeInfo(Opcode.lload_1, ParamType.Void, [], ['value'], 'load a long value from local variable 1'),
+	new OpcodeInfo(Opcode.lload_2, ParamType.Void, [], ['value'], 'load a long value from local variable 2'),
+	new OpcodeInfo(Opcode.lload_3, ParamType.Void, [], ['value'], 'load a long value from local variable 3'),
+	
+	new OpcodeInfo(Opcode.fload_0, ParamType.Void, [], ['value'], 'load a float value from local variable 0'),
+	new OpcodeInfo(Opcode.fload_1, ParamType.Void, [], ['value'], 'load a float value from local variable 1'),
+	new OpcodeInfo(Opcode.fload_2, ParamType.Void, [], ['value'], 'load a float value from local variable 2'),
+	new OpcodeInfo(Opcode.fload_3, ParamType.Void, [], ['value'], 'load a float value from local variable 3'),
+
+	new OpcodeInfo(Opcode.dload_0, ParamType.Void, [], ['value'], 'load a double value from local variable 0'),
+	new OpcodeInfo(Opcode.dload_1, ParamType.Void, [], ['value'], 'load a double value from local variable 1'),
+	new OpcodeInfo(Opcode.dload_2, ParamType.Void, [], ['value'], 'load a double value from local variable 2'),
+	new OpcodeInfo(Opcode.dload_3, ParamType.Void, [], ['value'], 'load a double value from local variable 3'),
+
+	new OpcodeInfo(Opcode.aload_0, ParamType.Void, [], ['objectref'], 'load a reference onto the stack from local variable 0'),
+	new OpcodeInfo(Opcode.aload_1, ParamType.Void, [], ['objectref'], 'load a reference onto the stack from local variable 1'),
+	new OpcodeInfo(Opcode.aload_2, ParamType.Void, [], ['objectref'], 'load a reference onto the stack from local variable 2'),
+	new OpcodeInfo(Opcode.aload_3, ParamType.Void, [], ['objectref'], 'load a reference onto the stack from local variable 3'),
+
+	new OpcodeInfo(Opcode.iaload, ParamType.Void, ['arrayref', 'index'], ['value'], 'load an int from an array'),
+	new OpcodeInfo(Opcode.laload, ParamType.Void, ['arrayref', 'index'], ['value'], 'load a long from an array'),
+	new OpcodeInfo(Opcode.faload, ParamType.Void, ['arrayref', 'index'], ['value'], 'load a float from an array'),
+	new OpcodeInfo(Opcode.daload, ParamType.Void, ['arrayref', 'index'], ['value'], 'load a double from an array'),
+	new OpcodeInfo(Opcode.aaload, ParamType.Void, ['arrayref', 'index'], ['objectref'], 'load onto the stack a reference from an array'),
+	new OpcodeInfo(Opcode.baload, ParamType.Void, ['arrayref', 'index'], ['value'], 'load a byte or Boolean value from an array'),
+	new OpcodeInfo(Opcode.caload, ParamType.Void, ['arrayref', 'index'], ['value'], 'load a char from an array'),
+	new OpcodeInfo(Opcode.saload, ParamType.Void, ['arrayref', 'index'], ['value'], 'load short from array'),
+
+	new OpcodeInfo(Opcode.istore, ParamType.U8, ['value'], [''], 'store int value into variable #index'),
+	new OpcodeInfo(Opcode.lstore, ParamType.U8, ['value'], [''], 'store a long value in a local variable #index'),
+	new OpcodeInfo(Opcode.fstore, ParamType.U8, ['value'], [''], 'store a float value in a local variable #index'),
+	new OpcodeInfo(Opcode.dstore, ParamType.U8, ['value'], [''], 'store a double value in a local variable #index'),
+	new OpcodeInfo(Opcode.astore, ParamType.U8, ['objectref'], [''], 'store a reference in a local variable #index'),
+
+	new OpcodeInfo(Opcode.istore_0, ParamType.Void, ['value'], [''], 'store int value into variable 0'),
+	new OpcodeInfo(Opcode.istore_1, ParamType.Void, ['value'], [''], 'store int value into variable 1'),
+	new OpcodeInfo(Opcode.istore_2, ParamType.Void, ['value'], [''], 'store int value into variable 2'),
+	new OpcodeInfo(Opcode.istore_3, ParamType.Void, ['value'], [''], 'store int value into variable 3'),
+
+	new OpcodeInfo(Opcode.lstore_0, ParamType.Void, ['value'], [''], 'store long value into variable 0'),
+	new OpcodeInfo(Opcode.lstore_1, ParamType.Void, ['value'], [''], 'store long value into variable 1'),
+	new OpcodeInfo(Opcode.lstore_2, ParamType.Void, ['value'], [''], 'store long value into variable 2'),
+	new OpcodeInfo(Opcode.lstore_3, ParamType.Void, ['value'], [''], 'store long value into variable 3'),
+
+	new OpcodeInfo(Opcode.fstore_0, ParamType.Void, ['value'], [''], 'store float value into variable 0'),
+	new OpcodeInfo(Opcode.fstore_1, ParamType.Void, ['value'], [''], 'store float value into variable 1'),
+	new OpcodeInfo(Opcode.fstore_2, ParamType.Void, ['value'], [''], 'store float value into variable 2'),
+	new OpcodeInfo(Opcode.fstore_3, ParamType.Void, ['value'], [''], 'store float value into variable 3'),
+
+	new OpcodeInfo(Opcode.dstore_0, ParamType.Void, ['value'], [''], 'store double value into variable 0'),
+	new OpcodeInfo(Opcode.dstore_1, ParamType.Void, ['value'], [''], 'store double value into variable 1'),
+	new OpcodeInfo(Opcode.dstore_2, ParamType.Void, ['value'], [''], 'store double value into variable 2'),
+	new OpcodeInfo(Opcode.dstore_3, ParamType.Void, ['value'], [''], 'store double value into variable 3'),
+
+	new OpcodeInfo(Opcode.astore_0, ParamType.Void, ['objectref'], [''], 'store reference into variable 0'),
+	new OpcodeInfo(Opcode.astore_1, ParamType.Void, ['objectref'], [''], 'store reference into variable 1'),
+	new OpcodeInfo(Opcode.astore_2, ParamType.Void, ['objectref'], [''], 'store reference into variable 2'),
+	new OpcodeInfo(Opcode.astore_3, ParamType.Void, ['objectref'], [''], 'store reference into variable 3'),
+
+	new OpcodeInfo(Opcode.iastore, ParamType.Void, ['arrayref', 'index', 'value'], [''], 'store an int into an array'),
+	new OpcodeInfo(Opcode.lastore, ParamType.Void, ['arrayref', 'index', 'value'], [''], 'store a long into an array'),
+	new OpcodeInfo(Opcode.fastore, ParamType.Void, ['arrayref', 'index', 'value'], [''], 'store a float into an array'),
+	new OpcodeInfo(Opcode.dastore, ParamType.Void, ['arrayref', 'index', 'value'], [''], 'store a double into an array'),
+	new OpcodeInfo(Opcode.aastore, ParamType.Void, ['arrayref', 'index', 'value'], [''], 'store a reference in an array'),
+	new OpcodeInfo(Opcode.bastore, ParamType.Void, ['arrayref', 'index', 'value'], [''], 'store a byte or Boolean value into an array'),
+	new OpcodeInfo(Opcode.castore, ParamType.Void, ['arrayref', 'index', 'value'], [''], 'store a char value into an array'),
+	new OpcodeInfo(Opcode.sastore, ParamType.Void, ['arrayref', 'index', 'value'], [''], 'store a short value into an array'),
+
+	new OpcodeInfo(Opcode.pop, ParamType.Void, ['value'], [''], 'discard the top value on the stack'),
+	new OpcodeInfo(Opcode.pop2, ParamType.Void, ['value2', 'value1'], [''], 'discard the top two values on the stack (or one value, if it is a double or long)'),
+
+	new OpcodeInfo(Opcode.dup, ParamType.Void, ['value'], ['value', 'value'], 'duplicate the value on top of the stack'),
+	new OpcodeInfo(Opcode.dup_x1, ParamType.Void, ['value2', 'value1'], ['value1', 'value2', 'value1'], 'insert a copy of the top value into the stack two values from the top. value1 and value2 must not be of the type double or long.'),
+	new OpcodeInfo(Opcode.dup_x2, ParamType.Void, ['value3', 'value2', 'value1'], ['value1', 'value3', 'value2', 'value1'], 'insert a copy of the top value into the stack two values from the top. value1 and value2 must not be of the type double or long.'),
+
+	new OpcodeInfo(Opcode.dup2, ParamType.Void, ['value2', 'value1'], ['value2', 'value1', 'value2', 'value1'], 'duplicate top two stack words (two values, if value1 is not double nor long; a single value, if value1 is double or long)'),
+	new OpcodeInfo(Opcode.dup2_x1, ParamType.Void, ['value3', 'value2', 'value1'], ['value2', 'value1', 'value3', 'value2', 'value1'], 'duplicate two words and insert beneath third word (see explanation above)'),
+	new OpcodeInfo(Opcode.dup2_x2, ParamType.Void, ['value4', 'value3', 'value2', 'value1'], ['value2', 'value1', 'value4', 'value3', 'value2', 'value1'], 'duplicate two words and insert beneath fourth word'),
+
+	new OpcodeInfo(Opcode.swap, ParamType.Void, ['value2', 'value1'], ['value1', 'value2'], 'swaps two top words on the stack (note that value1 and value2 must not be double or long)'),
+
+	new OpcodeInfo(Opcode.iadd, ParamType.Void, ['value1', 'value2'], ['result'], 'add two ints'),
+	new OpcodeInfo(Opcode.ladd, ParamType.Void, ['value1', 'value2'], ['result'], 'add two longs'),
+	new OpcodeInfo(Opcode.fadd, ParamType.Void, ['value1', 'value2'], ['result'], 'add two floats'),
+	new OpcodeInfo(Opcode.dadd, ParamType.Void, ['value1', 'value2'], ['result'], 'add two doubles'),
+
+	new OpcodeInfo(Opcode.isub, ParamType.Void, ['value1', 'value2'], ['result'], 'subtract two ints'),
+	new OpcodeInfo(Opcode.lsub, ParamType.Void, ['value1', 'value2'], ['result'], 'subtract two longs'),
+	new OpcodeInfo(Opcode.fsub, ParamType.Void, ['value1', 'value2'], ['result'], 'subtract two floats'),
+	new OpcodeInfo(Opcode.dsub, ParamType.Void, ['value1', 'value2'], ['result'], 'subtract two doubles'),
+
+	new OpcodeInfo(Opcode.imul, ParamType.Void, ['value1', 'value2'], ['result'], 'multiply two ints'),
+	new OpcodeInfo(Opcode.lmul, ParamType.Void, ['value1', 'value2'], ['result'], 'multiply two longs'),
+	new OpcodeInfo(Opcode.fmul, ParamType.Void, ['value1', 'value2'], ['result'], 'multiply two floats'),
+	new OpcodeInfo(Opcode.dmul, ParamType.Void, ['value1', 'value2'], ['result'], 'multiply two doubles'),
+
+	new OpcodeInfo(Opcode.idiv, ParamType.Void, ['value1', 'value2'], ['result'], 'divide two ints'),
+	new OpcodeInfo(Opcode.ldiv, ParamType.Void, ['value1', 'value2'], ['result'], 'divide two longs'),
+	new OpcodeInfo(Opcode.fdiv, ParamType.Void, ['value1', 'value2'], ['result'], 'divide two floats'),
+	new OpcodeInfo(Opcode.ddiv, ParamType.Void, ['value1', 'value2'], ['result'], 'divide two doubles'),
+
+	new OpcodeInfo(Opcode.irem, ParamType.Void, ['value1', 'value2'], ['result'], 'remainder of two ints'),
+	new OpcodeInfo(Opcode.lrem, ParamType.Void, ['value1', 'value2'], ['result'], 'remainder of two longs'),
+	new OpcodeInfo(Opcode.frem, ParamType.Void, ['value1', 'value2'], ['result'], 'remainder of two floats'),
+	new OpcodeInfo(Opcode.drem, ParamType.Void, ['value1', 'value2'], ['result'], 'remainder of two doubles'),
+
+	new OpcodeInfo(Opcode.ineg, ParamType.Void, ['value'], ['result'], 'negate ints'),
+	new OpcodeInfo(Opcode.ineg, ParamType.Void, ['value'], ['result'], 'negate longs'),
+	new OpcodeInfo(Opcode.ineg, ParamType.Void, ['value'], ['result'], 'negate floats'),
+	new OpcodeInfo(Opcode.ineg, ParamType.Void, ['value'], ['result'], 'negate doubles'),
+
+	new OpcodeInfo(Opcode.ishl, ParamType.Void, ['value1', 'value2'], ['result'], 'int shift left'),
+	new OpcodeInfo(Opcode.lshl, ParamType.Void, ['value1', 'value2'], ['result'], 'bitwise shift left of a long value1 by int value2 positions'),
+
+	new OpcodeInfo(Opcode.ishr, ParamType.Void, ['value1', 'value2'], ['result'], 'int arithmetic shift right'),
+	new OpcodeInfo(Opcode.lshr, ParamType.Void, ['value1', 'value2'], ['result'], 'bitwise arithmetic shift right of a long value1 by int value2 positions'),
+
+	new OpcodeInfo(Opcode.iushr, ParamType.Void, ['value1', 'value2'], ['result'], 'int logical shift right'),
+	new OpcodeInfo(Opcode.lushr, ParamType.Void, ['value1', 'value2'], ['result'], 'bitwise logical shift right of a long value1 by int value2 positions'),
+
+	new OpcodeInfo(Opcode.iand, ParamType.Void, ['value1', 'value2'], ['result'], 'bitwise and of two ints'),
+	new OpcodeInfo(Opcode.land, ParamType.Void, ['value1', 'value2'], ['result'], 'bitwise and of two longs'),
+
+	new OpcodeInfo(Opcode.ior, ParamType.Void, ['value1', 'value2'], ['result'], 'bitwise or of two ints'),
+	new OpcodeInfo(Opcode.lor, ParamType.Void, ['value1', 'value2'], ['result'], 'bitwise or of two longs'),
+
+	new OpcodeInfo(Opcode.ixor, ParamType.Void, ['value1', 'value2'], ['result'], 'bitwise xor of two ints'),
+	new OpcodeInfo(Opcode.lxor, ParamType.Void, ['value1', 'value2'], ['result'], 'bitwise xor of two longs'),
+
+	new OpcodeInfo(Opcode.iinc, ParamType.U8_S8, [], [], 'increment local variable #index by signed byte const'),
+
+	new OpcodeInfo(Opcode.i2l, ParamType.Void, ['value'], ['result'], 'convert an int into a long'),
+	new OpcodeInfo(Opcode.i2f, ParamType.Void, ['value'], ['result'], 'convert an int into a float'),
+	new OpcodeInfo(Opcode.i2d, ParamType.Void, ['value'], ['result'], 'convert an int into a double'),
+
+	new OpcodeInfo(Opcode.l2i, ParamType.Void, ['value'], ['result'], 'convert a long to a int'),
+	new OpcodeInfo(Opcode.l2f, ParamType.Void, ['value'], ['result'], 'convert a long to a float'),
+	new OpcodeInfo(Opcode.l2d, ParamType.Void, ['value'], ['result'], 'convert a long to a double'),
+
+	new OpcodeInfo(Opcode.f2i, ParamType.Void, ['value'], ['result'], 'convert a float to a int'),
+	new OpcodeInfo(Opcode.f2l, ParamType.Void, ['value'], ['result'], 'convert a float to a long'),
+	new OpcodeInfo(Opcode.f2d, ParamType.Void, ['value'], ['result'], 'convert a float to a double'),
+
+	new OpcodeInfo(Opcode.d2i, ParamType.Void, ['value'], ['result'], 'convert a double to a int'),
+	new OpcodeInfo(Opcode.d2l, ParamType.Void, ['value'], ['result'], 'convert a double to a long'),
+	new OpcodeInfo(Opcode.d2f, ParamType.Void, ['value'], ['result'], 'convert a double to a float'),
+
+	new OpcodeInfo(Opcode.i2b, ParamType.Void, ['value'], ['result'], 'convert an int into a byte'),
+	new OpcodeInfo(Opcode.i2c, ParamType.Void, ['value'], ['result'], 'convert an int into a character'),
+	new OpcodeInfo(Opcode.i2s, ParamType.Void, ['value'], ['result'], 'convert an int into a short'),
+
+	new OpcodeInfo(Opcode.lcmp, ParamType.Void, ['value1', 'value2'], ['result'], 'compare two longs values'),
+	new OpcodeInfo(Opcode.fcmpl, ParamType.Void, ['value1', 'value2'], ['result'], 'compare two floats less'),
+	new OpcodeInfo(Opcode.fcmpg, ParamType.Void, ['value1', 'value2'], ['result'], 'compare two floats greater'),
+	new OpcodeInfo(Opcode.dcmpl, ParamType.Void, ['value1', 'value2'], ['result'], 'compare two doubles less'),
+	new OpcodeInfo(Opcode.dcmpg, ParamType.Void, ['value1', 'value2'], ['result'], 'compare two doubles greater'),
+
+	new OpcodeInfo(Opcode.ifeq, ParamType.S16, ['value'], [], 'if value is 0, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+	new OpcodeInfo(Opcode.ifne, ParamType.S16, ['value'], [], 'if value is not 0, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+	new OpcodeInfo(Opcode.iflt, ParamType.S16, ['value'], [], 'if value is less than 0, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+	new OpcodeInfo(Opcode.ifge, ParamType.S16, ['value'], [], 'if value is greater than or equal to 0, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+	new OpcodeInfo(Opcode.ifgt, ParamType.S16, ['value'], [], 'if value is greater than 0, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+	new OpcodeInfo(Opcode.ifle, ParamType.S16, ['value'], [], 'if value is less than or equal to 0, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+
+	new OpcodeInfo(Opcode.if_icmpeq, ParamType.S16, ['value1', 'value2'], [], 'if ints are equal, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+	new OpcodeInfo(Opcode.if_icmpne, ParamType.S16, ['value1', 'value2'], [], 'ifif ints are not equal, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+	new OpcodeInfo(Opcode.if_icmplt, ParamType.S16, ['value1', 'value2'], [], 'if value1 is less than value2, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+	new OpcodeInfo(Opcode.if_icmpge, ParamType.S16, ['value1', 'value2'], [], 'if value1 is greater than or equal to value2, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+	new OpcodeInfo(Opcode.if_icmpgt, ParamType.S16, ['value1', 'value2'], [], 'if value1 is greater than value2, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+	new OpcodeInfo(Opcode.if_icmple, ParamType.S16, ['value1', 'value2'], [], 'if value1 is less than or equal to value2, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+	new OpcodeInfo(Opcode.if_acmpeq, ParamType.S16, ['value1', 'value2'], [], 'if references are equal, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+	new OpcodeInfo(Opcode.if_acmpne, ParamType.S16, ['value1', 'value2'], [], 'if references are not equal, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+
+	new OpcodeInfo(Opcode.goto, ParamType.S16, [], [], 'goes to another instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+	new OpcodeInfo(Opcode.jsr, ParamType.S16, [], ['address'], 'jump to subroutine at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2) and place the return address on the stack'),
+	new OpcodeInfo(Opcode.ret, ParamType.U8, [], [], 'continue execution from address taken from a local variable #index (the asymmetry with jsr is intentional)'),
+
+	new OpcodeInfo(Opcode.tableswitch, ParamType.TableSwitch, ['index'], [], 'continue execution from an address in the table at offset index'),
+	new OpcodeInfo(Opcode.lookupswitch, ParamType.LookupSwitch, ['key'], [], 'a target address is looked up from a table using a key and execution continues from the instruction at that address'),
+
+	new OpcodeInfo(Opcode.ireturn, ParamType.Void, ['value'], null, 'return an integer from a method'),
+	new OpcodeInfo(Opcode.lreturn, ParamType.Void, ['value'], null, 'return a long value'),
+	new OpcodeInfo(Opcode.freturn, ParamType.Void, ['value'], null, 'return a float value'),
+	new OpcodeInfo(Opcode.dreturn, ParamType.Void, ['value'], null, 'return a double value'),
+	new OpcodeInfo(Opcode.areturn, ParamType.Void, ['objectref'], null, 'return a reference'),
+	new OpcodeInfo(Opcode.Return, ParamType.Void, [], null, 'return void from method'),
+
+	new OpcodeInfo(Opcode.getstatic, ParamType.U16, [], ['value'], 'get a static field value of a class, where the field is identified by field reference in the constant pool index (index1 << 8 + index2)'),
+	new OpcodeInfo(Opcode.putstatic, ParamType.U16, ['value'], [], 'set static field to value in a class, where the field is identified by a field reference index in constant pool (indexbyte1 << 8 + indexbyte2'),
+
+	new OpcodeInfo(Opcode.getfield, ParamType.U16, ['objectref'], ['value'], 'get a field value of an object objectref, where the field is identified by field reference in the constant pool index (index1 << 8 + index2)'),
+	new OpcodeInfo(Opcode.putfield, ParamType.U16, ['objectref', 'value'], [], 'set field to value in an object objectref, where the field is identified by a field reference index in constant pool (indexbyte1 << 8 + indexbyte2)'),
+
+	new OpcodeInfo(Opcode.invokevirtual, ParamType.U16, null, null, 'invoke virtual method on object objectref, where the method is identified by method reference index in constant pool (indexbyte1 << 8 + indexbyte2)'),
+	new OpcodeInfo(Opcode.invokespecial, ParamType.U16, null, null, 'invoke instance method on object objectref, where the method is identified by method reference index in constant pool (indexbyte1 << 8 + indexbyte2)'),
+	new OpcodeInfo(Opcode.invokestatic, ParamType.U16, null, null, 'invoke a static method, where the method is identified by method reference index in constant pool (indexbyte1 << 8 + indexbyte2)'),
+	new OpcodeInfo(Opcode.invokeinterface, ParamType.U16, null, null, 'invokes an interface method on object objectref, where the interface method is identified by method reference index in constant pool (indexbyte1 << 8 + indexbyte2)'),
+	new OpcodeInfo(Opcode.invokedynamic, ParamType.U16, null, null, 'invokes a dynamic method identified by method reference index in constant pool (indexbyte1 << 8 + indexbyte2)'),
+
+	new OpcodeInfo(Opcode.new, ParamType.U16, [], ['objectref'], 'create new object of type identified by class reference in constant pool index (indexbyte1 << 8 + indexbyte2)'),
+	new OpcodeInfo(Opcode.newarray, ParamType.U8, ['count'], ['arrayref'], 'create new array with count elements of primitive type identified by atype'),
+	new OpcodeInfo(Opcode.anewarray, ParamType.U16, ['count'], ['arrayref'], 'create a new array of references of length count and component type identified by the class reference index (indexbyte1 << 8 + indexbyte2) in the constant pool'),
+
+	new OpcodeInfo(Opcode.arraylength, ParamType.Void, ['arrayref'], ['length'], 'get the length of an array'),
+
+	new OpcodeInfo(Opcode.athrow, ParamType.Void, ['objectref'], null, 'throws an error or exception (notice that the rest of the stack is cleared, leaving only a reference to the Throwable)'),
+
+	new OpcodeInfo(Opcode.checkcast, ParamType.U16, ['objectref'], ['objectref'], 'checks whether an objectref is of a certain type, the class reference of which is in the constant pool at index (indexbyte1 << 8 + indexbyte2)'),
+	new OpcodeInfo(Opcode.instanceof, ParamType.U16, ['objectref'], ['result'], 'determines if an object objectref is of a given type, identified by class reference index in constant pool (indexbyte1 << 8 + indexbyte2)'),
+
+	new OpcodeInfo(Opcode.monitorenter, ParamType.Void, ['objectref'], [], 'enter monitor for object ("grab the lock" - start of synchronized() section)'),
+	new OpcodeInfo(Opcode.monitorexit, ParamType.Void, ['objectref'], [], 'exit monitor for object ("release the lock" - end of synchronized() section)'),
+
+	new OpcodeInfo(Opcode.wide, ParamType.Special, null, null, 'execute opcode, where opcode is either iload, fload, aload, lload, dload, istore, fstore, astore, lstore, dstore, or ret, but assume the index is 16 bit; or execute iinc, where the index is 16 bits and the constant to increment by is a signed 16 bit short'),
+
+	new OpcodeInfo(Opcode.multianewarray, ParamType.U16_U8, null, ['arrayref'], 'create a new array of dimensions dimensions with elements of type identified by class reference in constant pool index (indexbyte1 << 8 + indexbyte2); the sizes of each dimension is identified by count1, [count2, etc.]'),
+
+	new OpcodeInfo(Opcode.ifnull, ParamType.S16, ['value'], [], 'if value is null, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+	new OpcodeInfo(Opcode.ifnonnull, ParamType.S16, ['value'], [], 'if value is not null, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+
+	new OpcodeInfo(Opcode.goto_w, ParamType.S32, [], [], 'goes to another instruction at branchoffset (signed int constructed from unsigned bytes branchbyte1 << 24 + branchbyte2 << 16 + branchbyte3 << 8 + branchbyte4)'),
+	new OpcodeInfo(Opcode.jsr_w, ParamType.S32, [], [], 'jump to subroutine at branchoffset (signed int constructed from unsigned bytes branchbyte1 << 24 + branchbyte2 << 16 + branchbyte3 << 8 + branchbyte4) and place the return address on the stack'),
+
+	new OpcodeInfo(Opcode.breakpoint, ParamType.Void, [], [], 'reserved for breakpoints in Java debuggers; should not appear in any class file'),
+	new OpcodeInfo(Opcode.impdep1, ParamType.Void, [], [], 'reserved for implementation-dependent operations within debuggers; should not appear in any class file'),
+	new OpcodeInfo(Opcode.impdep2, ParamType.Void, [], [], 'reserved for implementation-dependent operations within debuggers; should not appear in any class file'),
+];
 
 export enum ACC_CLASS { PUBLIC = 0x0001, FINAL = 0x0010, SUPER = 0x0020, INTERFACE = 0x0200, ABSTRACT = 0x0400 }
 export enum ACC_MEMBER { PUBLIC = 0x0001, PRIVATE = 0x0002, PROTECTED = 0x0004, STATIC = 0x0008, FINAL = 0x0010, SYNCHRONIZED = 0x0020, VOLATILE = 0x0040, TRANSIENT = 0x0080, NATIVE = 0x0100, ABSTRACT = 0x0400, STRICT = 0x0800 }
@@ -118,7 +389,7 @@ export class JavaAttributeInfo { constructor(public index: number, public data: 
 export class Instruction {
 	public name: string;
 
-	constructor(public offset: number, public op: Opcode, public param: any, public param2: any = null) {
+	constructor(public offset: number, public op: Opcode, public stackOffset: number, public param: any, public param2: any = null) {
 		this.name = Opcode[op];
 	}
 }
@@ -127,13 +398,14 @@ export class InstructionReader {
 	static read(code: Stream): Instruction {
 		var offset = code.position;
 		var op = <Opcode>code.readUInt8();
+		var stackOffset = 0;
 		switch (op) {
 			case Opcode.tableswitch: throw (new Error("Not implemented tableswitch"));
 			case Opcode.lookupswitch: throw (new Error("Not implemented lookupswitch"));
-			case Opcode.bipush: return new Instruction(offset, op, code.readUInt8());
-			case Opcode.sipush: return new Instruction(offset, op, code.readUInt16BE());
-			case Opcode.ldc: return new Instruction(offset, op, code.readUInt8());
-			case Opcode.iinc: return new Instruction(offset, op, code.readUInt8(), code.readInt8());
+			case Opcode.bipush: return new Instruction(offset, op, stackOffset, code.readUInt8());
+			case Opcode.sipush: return new Instruction(offset, op, stackOffset, code.readUInt16BE());
+			case Opcode.ldc: return new Instruction(offset, op, stackOffset, code.readUInt8());
+			case Opcode.iinc: return new Instruction(offset, op, stackOffset, code.readUInt8(), code.readInt8());
 			case Opcode.newarray: throw (new Error("Not implemented newarray"));
 			case Opcode.wide: throw (new Error("Not implemented wide"));
 			case Opcode.multianewarray: throw (new Error("Not implemented multianewarray"));
@@ -143,19 +415,19 @@ export class InstructionReader {
 
 			case Opcode.iload: case Opcode.lload: case Opcode.fload: case Opcode.dload: case Opcode.aload:
 			case Opcode.istore: case Opcode.lstore: case Opcode.fstore: case Opcode.dstore: case Opcode.astore: case Opcode.ret:
-				return new Instruction(offset, op, code.readUInt8());
+				return new Instruction(offset, op, stackOffset, code.readUInt8());
 
 			case Opcode.ldc_w: case Opcode.ldc2_w: case Opcode.getstatic: case Opcode.putstatic:
 			case Opcode.getfield: case Opcode.putfield: case Opcode.new: case Opcode.invokevirtual: case Opcode.invokespecial:
 			case Opcode.invokestatic: case Opcode.anewarray: case Opcode.checkcast: case Opcode.instanceof:
-				return new Instruction(offset, op, code.readUInt16BE());
+				return new Instruction(offset, op, stackOffset, code.readUInt16BE());
 
 			case Opcode.ifeq: case Opcode.ifne: case Opcode.iflt: case Opcode.ifge: case Opcode.ifgt: case Opcode.ifle:
 			case Opcode.if_icmpeq: case Opcode.if_icmpne: case Opcode.if_icmplt: case Opcode.if_icmpge: case Opcode.if_icmpgt: case Opcode.if_icmple:
 			case Opcode.if_acmpeq: case Opcode.if_acmpne: case Opcode.goto: case Opcode.jsr: case Opcode.ifnull: case Opcode.ifnonnull:
-				return new Instruction(offset, op, offset + code.readInt16BE());
+				return new Instruction(offset, op, stackOffset, offset + code.readInt16BE());
 
-			default: return new Instruction(offset, op, null);
+			default: return new Instruction(offset, op, stackOffset, null);
 		}
 	}
 }
@@ -173,8 +445,8 @@ export class JavaMethod {
 	}
 
 	parse() {
-		var methodType = JavaMethodType.demangle(this.methodTypeStr);
-		console.log('JavaMethod.parse() -> ', this.name, this.methodTypeStr, methodType.mangled);
+		var methodType = JavaTypeMethod.demangle(this.methodTypeStr);
+		//console.log('JavaMethod.parse() -> ', this.name, this.methodTypeStr, methodType.mangled);
 		this.info.attributes.forEach(attribute => {
 			var attribute_name = this.pool.getString(attribute.index);
 			//console.log('attribute:', attribute_name);
@@ -185,7 +457,7 @@ export class JavaMethod {
 				var max_locals = attr2.readInt16BE();
 				var code_length = attr2.readInt32BE();
 				var code = new Stream(attr2.readBytes(code_length));
-				console.log('max_stack_locals', max_stack, max_locals);
+				//console.log('max_stack_locals', max_stack, max_locals);
 
 				var instructions = <Instruction[]>[];
 				while (!code.eof) {
@@ -260,18 +532,18 @@ class JavaType {
 					if (c == ';') break;
 					out += c;
 				}
-				return new JavaObject(out);
-			case 'V': return new JavaVoid();
-			case 'I': return new JavaInteger();
-			case 'J': return new JavaLong();
-			case 'F': return new JavaFloat();
-			case 'B': return new JavaByte();
-			case 'Z': return new JavaBoolean();
-			case 'S': return new JavaShort();
-			case 'C': return new JavaCharacter();
-			case 'D': return new JavaDouble();
-			case 'F': return new JavaFloat();
-			case '[': return new JavaArray(JavaType._demangle(data));
+				return new JavaTypeObject(out);
+			case 'V': return new JavaTypeVoid();
+			case 'I': return new JavaTypeInteger();
+			case 'J': return new JavaTypeLong();
+			case 'F': return new JavaTypeFloat();
+			case 'B': return new JavaTypeByte();
+			case 'Z': return new JavaTypeBoolean();
+			case 'S': return new JavaTypeShort();
+			case 'C': return new JavaTypeCharacter();
+			case 'D': return new JavaTypeDouble();
+			case 'F': return new JavaTypeFloat();
+			case '[': return new JavaTypeArray(JavaType._demangle(data));
 			case ')': return null;
 
 			default: throw (new Error("Unknown type " + type));
@@ -279,27 +551,27 @@ class JavaType {
 	}
 }
 
-class JavaRef extends JavaType { mangled = ""; }
-class JavaVoid extends JavaType { mangled = "V"; }
-class JavaBoolean extends JavaType { mangled = "Z"; }
-class JavaByte extends JavaType { mangled = "B"; }
-class JavaShort extends JavaType { mangled = "S"; }
-class JavaCharacter extends JavaType { mangled = "C"; public boxed_name: String = 'Ljava/lang/Character;'; }
-class JavaInteger extends JavaType { mangled = "I"; }
-class JavaObject extends JavaType { constructor(public type: string) { super(); this.mangled = 'T' + type + ';' } }
-class JavaFloat extends JavaType { mangled = "F"; }
-class JavaDouble extends JavaType { mangled = "D"; }
-class JavaLong extends JavaType { mangled = "J"; }
-class JavaArray extends JavaType { constructor(public type: JavaType) { super(); this.mangled = '[' + type.mangled; } }
+class JavaTypeRef extends JavaType { mangled = ""; }
+class JavaTypeVoid extends JavaType { mangled = "V"; }
+class JavaTypeBoolean extends JavaType { mangled = "Z"; }
+class JavaTypeByte extends JavaType { mangled = "B"; }
+class JavaTypeShort extends JavaType { mangled = "S"; }
+class JavaTypeCharacter extends JavaType { mangled = "C"; public boxed_name: String = 'Ljava/lang/Character;'; }
+class JavaTypeInteger extends JavaType { mangled = "I"; }
+class JavaTypeObject extends JavaType { constructor(public type: string) { super(); this.mangled = 'T' + type + ';' } }
+class JavaTypeFloat extends JavaType { mangled = "F"; }
+class JavaTypeDouble extends JavaType { mangled = "D"; }
+class JavaTypeLong extends JavaType { mangled = "J"; }
+class JavaTypeArray extends JavaType { constructor(public type: JavaType) { super(); this.mangled = '[' + type.mangled; } }
 
-class JavaMethodType extends JavaType {
+class JavaTypeMethod extends JavaType {
 	arguments = <JavaType[]>[];
 	rettype: JavaType;
 	mangled = "";
 
-	static demangle(data: string) { return JavaMethodType._demangle(new StringReader(data)); }
+	static demangle(data: string) { return JavaTypeMethod._demangle(new StringReader(data)); }
 	static _demangle(str: StringReader) {
-		var methodType = new JavaMethodType();
+		var methodType = new JavaTypeMethod();
 		if (str.read() != '(') throw (new Error("Not a method type"));
 		while (!str.eof) {
 			var type: JavaType = JavaType._demangle(str);
@@ -314,16 +586,17 @@ class JavaMethodType extends JavaType {
 }
 
 class Dynarec {
-	static getFunctionCode(pool: ConstantPool, methodName: string, methodType: JavaMethodType, max_stack: number, max_locals: number, is_static: boolean, instructions: Instruction[]) {
+	static getFunctionCode(pool: ConstantPool, methodName: string, methodType: JavaTypeMethod, max_stack: number, max_locals: number, is_static: boolean, instructions: Instruction[]) {
 		var dynarec = new Dynarec1(pool, methodName, methodType, max_stack, max_locals, is_static);
 		dynarec.process(instructions);
 		var func;
 
-		console.log(dynarec.body);
+		//console.log(dynarec.body);
 
 		try {
 			func = Function.apply(null, range(methodType.arguments.length).map(index => 'arg' + index).concat([dynarec.body]));
 		} catch (e) {
+			console.info(dynarec.body);
 			console.error(e);
 			func = null;
 		}
@@ -373,37 +646,37 @@ class DynarecProcessor {
 		var op = i.op, param = i.param, param2 = i.param2;
 		//console.log(i);
 		switch (op) {
-			case Opcode.aload_0: case Opcode.aload_1: case Opcode.aload_2: case Opcode.aload_3: return processor._load(new JavaRef, op - Opcode.aload_0);
-			case Opcode.iload_0: case Opcode.iload_1: case Opcode.iload_2: case Opcode.iload_3: return processor._load(new JavaInteger, op - Opcode.iload_0);
-			case Opcode.lload_0: case Opcode.lload_1: case Opcode.lload_2: case Opcode.lload_3: return processor._load(new JavaLong, op - Opcode.lload_0);
-			case Opcode.fload_0: case Opcode.fload_1: case Opcode.fload_2: case Opcode.fload_3: return processor._load(new JavaFloat, op - Opcode.fload_0);
-			case Opcode.dload_0: case Opcode.dload_1: case Opcode.dload_2: case Opcode.dload_3: return processor._load(new JavaDouble, op - Opcode.dload_0);
+			case Opcode.aload_0: case Opcode.aload_1: case Opcode.aload_2: case Opcode.aload_3: return processor._load(new JavaTypeRef, op - Opcode.aload_0);
+			case Opcode.iload_0: case Opcode.iload_1: case Opcode.iload_2: case Opcode.iload_3: return processor._load(new JavaTypeInteger, op - Opcode.iload_0);
+			case Opcode.lload_0: case Opcode.lload_1: case Opcode.lload_2: case Opcode.lload_3: return processor._load(new JavaTypeLong, op - Opcode.lload_0);
+			case Opcode.fload_0: case Opcode.fload_1: case Opcode.fload_2: case Opcode.fload_3: return processor._load(new JavaTypeFloat, op - Opcode.fload_0);
+			case Opcode.dload_0: case Opcode.dload_1: case Opcode.dload_2: case Opcode.dload_3: return processor._load(new JavaTypeDouble, op - Opcode.dload_0);
 
-			case Opcode.aload: return processor._load(new JavaRef, param);
-			case Opcode.iload: return processor._load(new JavaInteger, param);
-			case Opcode.lload: return processor._load(new JavaLong, param);
-			case Opcode.fload: return processor._load(new JavaFloat, param);
-			case Opcode.dload: return processor._load(new JavaDouble, param);
+			case Opcode.aload: return processor._load(new JavaTypeRef, param);
+			case Opcode.iload: return processor._load(new JavaTypeInteger, param);
+			case Opcode.lload: return processor._load(new JavaTypeLong, param);
+			case Opcode.fload: return processor._load(new JavaTypeFloat, param);
+			case Opcode.dload: return processor._load(new JavaTypeDouble, param);
 
 			case Opcode.aaload: return processor.aaload();
 			case Opcode.aastore: return processor.aastore();
 
-			case Opcode.astore_0: case Opcode.astore_1: case Opcode.astore_2: case Opcode.astore_3: return processor._store(new JavaRef, op - Opcode.astore_0);
-			case Opcode.istore_0: case Opcode.istore_1: case Opcode.istore_2: case Opcode.istore_3: return processor._store(new JavaInteger, op - Opcode.istore_0);
-			case Opcode.lstore_0: case Opcode.lstore_1: case Opcode.lstore_2: case Opcode.lstore_3: return processor._store(new JavaLong, op - Opcode.lstore_0);
-			case Opcode.fstore_0: case Opcode.fstore_1: case Opcode.fstore_2: case Opcode.fstore_3: return processor._store(new JavaFloat, op - Opcode.fstore_0);
-			case Opcode.dstore_0: case Opcode.dstore_1: case Opcode.dstore_2: case Opcode.dstore_3: return processor._store(new JavaDouble, op - Opcode.dstore_0);
+			case Opcode.astore_0: case Opcode.astore_1: case Opcode.astore_2: case Opcode.astore_3: return processor._store(new JavaTypeRef, op - Opcode.astore_0);
+			case Opcode.istore_0: case Opcode.istore_1: case Opcode.istore_2: case Opcode.istore_3: return processor._store(new JavaTypeInteger, op - Opcode.istore_0);
+			case Opcode.lstore_0: case Opcode.lstore_1: case Opcode.lstore_2: case Opcode.lstore_3: return processor._store(new JavaTypeLong, op - Opcode.lstore_0);
+			case Opcode.fstore_0: case Opcode.fstore_1: case Opcode.fstore_2: case Opcode.fstore_3: return processor._store(new JavaTypeFloat, op - Opcode.fstore_0);
+			case Opcode.dstore_0: case Opcode.dstore_1: case Opcode.dstore_2: case Opcode.dstore_3: return processor._store(new JavaTypeDouble, op - Opcode.dstore_0);
 
-			case Opcode.astore: return processor._store(new JavaRef, param);
-			case Opcode.istore: return processor._store(new JavaInteger, param);
-			case Opcode.lstore: return processor._store(new JavaLong, param);
-			case Opcode.fstore: return processor._store(new JavaFloat, param);
-			case Opcode.dstore: return processor._store(new JavaDouble, param);
+			case Opcode.astore: return processor._store(new JavaTypeRef, param);
+			case Opcode.istore: return processor._store(new JavaTypeInteger, param);
+			case Opcode.lstore: return processor._store(new JavaTypeLong, param);
+			case Opcode.fstore: return processor._store(new JavaTypeFloat, param);
+			case Opcode.dstore: return processor._store(new JavaTypeDouble, param);
 
-			case Opcode.iconst_m1: case Opcode.iconst_0: case Opcode.iconst_1: case Opcode.iconst_2: case Opcode.iconst_3: case Opcode.iconst_4: case Opcode.iconst_5: return processor._const(new JavaInteger, op - Opcode.iconst_0);
-			case Opcode.lconst_0: case Opcode.lconst_1: return processor._const(new JavaLong, op - Opcode.iconst_0);
-			case Opcode.sipush: return processor._const(new JavaShort, param);
-			case Opcode.bipush: return processor._const(new JavaByte, param);
+			case Opcode.iconst_m1: case Opcode.iconst_0: case Opcode.iconst_1: case Opcode.iconst_2: case Opcode.iconst_3: case Opcode.iconst_4: case Opcode.iconst_5: return processor._const(new JavaTypeInteger, op - Opcode.iconst_0);
+			case Opcode.lconst_0: case Opcode.lconst_1: return processor._const(new JavaTypeLong, op - Opcode.iconst_0);
+			case Opcode.sipush: return processor._const(new JavaTypeShort, param);
+			case Opcode.bipush: return processor._const(new JavaTypeByte, param);
 
 			case Opcode.ldc2_w: return processor.ldc(param, true);
 			case Opcode.ldc: return processor.ldc(param, false);
@@ -413,27 +686,27 @@ class DynarecProcessor {
 			case Opcode.invokevirtual: return processor.invoke(InvokeType.virtual, pool.getMethodReference(param));
 			case Opcode.getstatic: return processor.getstatic(pool.get<JavaConstantFieldReference>(param));
 
-			case Opcode.Return: return processor._return(new JavaVoid);
-			case Opcode.ireturn: return processor._return(new JavaInteger);
-			case Opcode.freturn: return processor._return(new JavaFloat);
-			case Opcode.dreturn: return processor._return(new JavaDouble);
-			case Opcode.lreturn: return processor._return(new JavaLong);
+			case Opcode.Return: return processor._return(new JavaTypeVoid);
+			case Opcode.ireturn: return processor._return(new JavaTypeInteger);
+			case Opcode.freturn: return processor._return(new JavaTypeFloat);
+			case Opcode.dreturn: return processor._return(new JavaTypeDouble);
+			case Opcode.lreturn: return processor._return(new JavaTypeLong);
 
 			case Opcode.iinc: return processor.iinc(param, param2);
 
-			case Opcode.iadd: return processor._binop(new JavaInteger, '+');
-			case Opcode.isub: return processor._binop(new JavaInteger, '-');
-			case Opcode.iand: return processor._binop(new JavaInteger, '&');
-			case Opcode.ishl: return processor._binop(new JavaInteger, '<<');
-			case Opcode.ishr: return processor._binop(new JavaInteger, '>>');
-			case Opcode.iushr: return processor._binop(new JavaInteger, '>>>');
+			case Opcode.iadd: return processor._binop(new JavaTypeInteger, '+');
+			case Opcode.isub: return processor._binop(new JavaTypeInteger, '-');
+			case Opcode.iand: return processor._binop(new JavaTypeInteger, '&');
+			case Opcode.ishl: return processor._binop(new JavaTypeInteger, '<<');
+			case Opcode.ishr: return processor._binop(new JavaTypeInteger, '>>');
+			case Opcode.iushr: return processor._binop(new JavaTypeInteger, '>>>');
 
-			case Opcode.ladd: return processor._binop(new JavaLong, '+');
-			case Opcode.lsub: return processor._binop(new JavaLong, '+');
-			case Opcode.land: return processor._binop(new JavaLong, '&');
-			case Opcode.lshl: return processor._binop(new JavaLong, '<<');
-			case Opcode.lshr: return processor._binop(new JavaLong, '>>');
-			case Opcode.lushr: return processor._binop(new JavaLong, '>>>');
+			case Opcode.ladd: return processor._binop(new JavaTypeLong, '+');
+			case Opcode.lsub: return processor._binop(new JavaTypeLong, '+');
+			case Opcode.land: return processor._binop(new JavaTypeLong, '&');
+			case Opcode.lshl: return processor._binop(new JavaTypeLong, '<<');
+			case Opcode.lshr: return processor._binop(new JavaTypeLong, '>>');
+			case Opcode.lushr: return processor._binop(new JavaTypeLong, '>>>');
 
 			case Opcode.baload: return processor.baload();
 			case Opcode.bastore: return processor.bastore();
@@ -443,15 +716,15 @@ class DynarecProcessor {
 
 			case Opcode.dup: return processor.dup();
 
-			case Opcode.i2b: return processor.convert(new JavaInteger, new JavaByte);
-			case Opcode.i2c: return processor.convert(new JavaInteger, new JavaCharacter);
-			case Opcode.i2d: return processor.convert(new JavaInteger, new JavaDouble);
-			case Opcode.i2f: return processor.convert(new JavaInteger, new JavaFloat);
-			case Opcode.i2l: return processor.convert(new JavaInteger, new JavaLong);
-			case Opcode.i2s: return processor.convert(new JavaInteger, new JavaShort);
-			case Opcode.l2d: return processor.convert(new JavaLong, new JavaDouble);
-			case Opcode.l2f: return processor.convert(new JavaLong, new JavaFloat);
-			case Opcode.l2i: return processor.convert(new JavaLong, new JavaInteger);
+			case Opcode.i2b: return processor.convert(new JavaTypeInteger, new JavaTypeByte);
+			case Opcode.i2c: return processor.convert(new JavaTypeInteger, new JavaTypeCharacter);
+			case Opcode.i2d: return processor.convert(new JavaTypeInteger, new JavaTypeDouble);
+			case Opcode.i2f: return processor.convert(new JavaTypeInteger, new JavaTypeFloat);
+			case Opcode.i2l: return processor.convert(new JavaTypeInteger, new JavaTypeLong);
+			case Opcode.i2s: return processor.convert(new JavaTypeInteger, new JavaTypeShort);
+			case Opcode.l2d: return processor.convert(new JavaTypeLong, new JavaTypeDouble);
+			case Opcode.l2f: return processor.convert(new JavaTypeLong, new JavaTypeFloat);
+			case Opcode.l2i: return processor.convert(new JavaTypeLong, new JavaTypeInteger);
 
 			case Opcode.ifeq: return processor.ifcond('==', param);
 			case Opcode.ifne: return processor.ifcond('!=', param);
@@ -476,7 +749,7 @@ class DynarecProcessor {
 }
 
 class Dynarec0 implements Processor {
-	constructor(private pool: ConstantPool, private methodName: string, private methodType: JavaMethodType, private max_stack: number, private max_locals: number, private is_static: boolean) {
+	constructor(private pool: ConstantPool, private methodName: string, private methodType: JavaTypeMethod, private max_stack: number, private max_locals: number, private is_static: boolean) {
 	}
 
 	body = '"use strict"; var stack = []; var locals = []; var label = 0;\n';
@@ -522,14 +795,14 @@ class Dynarec0 implements Processor {
 	}
 
 	_load(type: JavaType, index: number) {
-		if (type instanceof JavaRef) {
+		if (type instanceof JavaTypeRef) {
 			this.writeSentence('stack.push(' + this.getref(index) + '); // aload');
 		} else {
 			this.writeSentence('stack.push(' + this.getref(index) + '.value); // _load');
 		}
 	}
 	_return(type: JavaType) {
-		if (type instanceof JavaVoid) {
+		if (type instanceof JavaTypeVoid) {
 			this.writeSentence('return;');
 		} else {
 			this.writeSentence('return stack.pop(); // _return');
@@ -540,12 +813,12 @@ class Dynarec0 implements Processor {
 		var className = methodInfo.className(this.pool);
 		var name = methodInfo.name(this.pool);
 		var type = methodInfo.type(this.pool)
-		var demangledType = JavaMethodType.demangle(methodInfo.type(this.pool));
+		var demangledType = JavaTypeMethod.demangle(methodInfo.type(this.pool));
 		var argCount = demangledType.arguments.length;
 
 		//if (invoketype == 'static') argCount++;
 
-		if (demangledType.rettype instanceof JavaVoid) {
+		if (demangledType.rettype instanceof JavaTypeVoid) {
 			this.call(name, argCount);
 		} else {
 			this.call_void(name, argCount);
@@ -560,7 +833,7 @@ class Dynarec0 implements Processor {
 	ldc(index: number, wide: boolean) { this.writeSentence('stack.push(' + this.pool.getValue(index) + '); // ldc'); }
 	getstatic(methodInfo: JavaConstantFieldReference) { this.writeSentence('stack.push(getstatic(' + methodInfo.name(this.pool) + ')); // getstatic'); }
 	_binop(type: JavaType, op: string) {
-		if (type instanceof JavaInteger) {
+		if (type instanceof JavaTypeInteger) {
 			this.writeSentence('var r = stack.pop(), l = stack.pop(); stack.push(l ' + op + ' r); // ibinop(' + op + ')');
 		} else {
 			this.writeSentence('var r = stack.pop(), l = stack.pop(); stack.push(Long["' + op + '"](l, r)); // lbinop(' + op + ')');
@@ -578,7 +851,7 @@ class Dynarec0 implements Processor {
 }
 
 class Dynarec1 implements Processor {
-	constructor(private pool: ConstantPool, private methodName: string, private methodType: JavaMethodType, private max_stack: number, private max_locals: number, private is_static: boolean) {
+	constructor(private pool: ConstantPool, private methodName: string, private methodType: JavaTypeMethod, private max_stack: number, private max_locals: number, private is_static: boolean) {
 	}
 
 	stack = <Node[]>[];
@@ -589,11 +862,11 @@ class Dynarec1 implements Processor {
 	}
 
 	process(instructions: Instruction[]) {
-		console.log('-----------------------------', this.methodName);
+		//console.log('-----------------------------', this.methodName);
 		instructions.forEach(i => {
 			this.processOne(i);
 		});
-		console.log('///////////////////////////// ', this.stack.length);
+		//console.log('///////////////////////////// ', this.stack.length);
 		if (this.stack.length) console.warn('stack length not zero at the end of the function! Probably a bug!');
 	}
 
@@ -611,7 +884,7 @@ class Dynarec1 implements Processor {
 	}
 
 	_load(type: JavaType, index: number) {
-		if (type instanceof JavaRef) {
+		if (type instanceof JavaTypeRef) {
 			this.stack.push(this.getref(index));
 		} else {
 			this.stack.push(new NodeCast(type, this.getref(index)));
@@ -623,7 +896,7 @@ class Dynarec1 implements Processor {
 	}
 
 	_return(type: JavaType) {
-		if (type instanceof JavaVoid) {
+		if (type instanceof JavaTypeVoid) {
 			this.writeSentence('return;');
 		} else {
 			this.writeSentence('return ' + this.stack.pop().toString() + ';');
@@ -655,7 +928,7 @@ class Dynarec1 implements Processor {
 		var className = methodInfo.className(this.pool);
 		var name = methodInfo.name(this.pool);
 		var type = methodInfo.type(this.pool)
-		var demangledType = JavaMethodType.demangle(methodInfo.type(this.pool));
+		var demangledType = JavaTypeMethod.demangle(methodInfo.type(this.pool));
 		var argCount = demangledType.arguments.length;
 		var args = <Node[]>[];
 
@@ -667,7 +940,7 @@ class Dynarec1 implements Processor {
 
 		var call = new NodeCall(name, args);
 
-		if (demangledType.rettype instanceof JavaVoid) {
+		if (demangledType.rettype instanceof JavaTypeVoid) {
 			this.writeSentence(call.toString() + ";");
 		} else {
 			this.stack.push(call);
@@ -756,7 +1029,7 @@ export class JavaClass {
 			if (item instanceof JavaConstantLong || item instanceof JavaConstantDouble) index++;
 		}
 
-		this.constantPool.dump();
+		//this.constantPool.dump();
 
 		var access_flags = stream.readUInt16BE();
 		var this_class = stream.readUInt16BE();
@@ -777,12 +1050,12 @@ export class JavaClass {
 		for (var n = 0, count = stream.readUInt16BE(); n < count; n++) this.methods.push(new JavaMethod(this.constantPool, this.readMethodInfo(stream)));
 		for (var n = 0, count = stream.readUInt16BE(); n < count; n++) attributes.push(this.readAttributeInfo(stream));
 
-		console.log(magic);
-		console.log(minor_version);
-		console.log(major_version, JavaClass.majorVersionMap[major_version]);
-		console.log(contant_pool_count);
-		console.log(interfaces);
-		console.log(fields);
+		//console.log(magic);
+		//console.log(minor_version);
+		//console.log(major_version, JavaClass.majorVersionMap[major_version]);
+		//console.log(contant_pool_count);
+		//console.log(interfaces);
+		//console.log(fields);
 		//console.log(methods);
 		//console.log(attributes);
 	}

@@ -72,6 +72,9 @@ var Convert = (function () {
     Convert.ConvertIC = function (value) {
         return (value & 0xFFFF) >>> 0;
     };
+    Convert.ConvertIS = function (value) {
+        return (value & 0xFFFF) | 0;
+    };
     return Convert;
 })();
 exports.Convert = Convert;
@@ -287,6 +290,249 @@ global['Convert'] = Convert;
     Opcode[Opcode["impdep2"] = 0xff] = "impdep2";
 })(exports.Opcode || (exports.Opcode = {}));
 var Opcode = exports.Opcode;
+
+(function (ParamType) {
+    ParamType[ParamType["Void"] = 0] = "Void";
+    ParamType[ParamType["Special"] = 1] = "Special";
+    ParamType[ParamType["U8"] = 2] = "U8";
+    ParamType[ParamType["S8"] = 3] = "S8";
+    ParamType[ParamType["U16"] = 4] = "U16";
+    ParamType[ParamType["S16"] = 5] = "S16";
+    ParamType[ParamType["U32"] = 6] = "U32";
+    ParamType[ParamType["S32"] = 7] = "S32";
+    ParamType[ParamType["U8_S8"] = 8] = "U8_S8";
+    ParamType[ParamType["U16_U8"] = 9] = "U16_U8";
+    ParamType[ParamType["TableSwitch"] = 10] = "TableSwitch";
+    ParamType[ParamType["LookupSwitch"] = 11] = "LookupSwitch";
+})(exports.ParamType || (exports.ParamType = {}));
+var ParamType = exports.ParamType;
+
+var OpcodeInfo = (function () {
+    function OpcodeInfo(opcode, param, stackPop, stackPush, description) {
+        this.opcode = opcode;
+        this.param = param;
+        this.stackPop = stackPop;
+        this.stackPush = stackPush;
+        this.description = description;
+    }
+    Object.defineProperty(OpcodeInfo.prototype, "deltaStack", {
+        get: function () {
+            return this.stackPush.length - this.stackPop.length;
+        },
+        enumerable: true,
+        configurable: true
+    });
+    return OpcodeInfo;
+})();
+exports.OpcodeInfo = OpcodeInfo;
+
+var opcodeInfoList = [
+    new OpcodeInfo(0 /* nop */, 0 /* Void */, [], [], 'perform no operation'),
+    new OpcodeInfo(1 /* aconst_null */, 0 /* Void */, [], ['null'], 'push a null reference onto the stack'),
+    new OpcodeInfo(2 /* iconst_m1 */, 0 /* Void */, [], ['-1'], 'load the int value -1 onto the stack'),
+    new OpcodeInfo(3 /* iconst_0 */, 0 /* Void */, [], ['0'], 'load the int value 0 onto the stack'),
+    new OpcodeInfo(4 /* iconst_1 */, 0 /* Void */, [], ['1'], 'load the int value 1 onto the stack'),
+    new OpcodeInfo(5 /* iconst_2 */, 0 /* Void */, [], ['2'], 'load the int value 2 onto the stack'),
+    new OpcodeInfo(6 /* iconst_3 */, 0 /* Void */, [], ['3'], 'load the int value 3 onto the stack'),
+    new OpcodeInfo(7 /* iconst_4 */, 0 /* Void */, [], ['4'], 'load the int value 4 onto the stack'),
+    new OpcodeInfo(8 /* iconst_5 */, 0 /* Void */, [], ['5'], 'load the int value 5 onto the stack'),
+    new OpcodeInfo(9 /* lconst_0 */, 0 /* Void */, [], ['0L'], 'push the long 0 onto the stack'),
+    new OpcodeInfo(10 /* lconst_1 */, 0 /* Void */, [], ['1L'], 'push the long 1 onto the stack'),
+    new OpcodeInfo(11 /* fconst_0 */, 0 /* Void */, [], ['0.0f'], 'push 0.0f on the stack'),
+    new OpcodeInfo(12 /* fconst_1 */, 0 /* Void */, [], ['1.0f'], 'push 1.0f on the stack'),
+    new OpcodeInfo(13 /* fconst_2 */, 0 /* Void */, [], ['2.0f'], 'push 2.0f on the stack'),
+    new OpcodeInfo(14 /* dconst_0 */, 0 /* Void */, [], ['0.0'], 'push the constant 0.0 onto the stack'),
+    new OpcodeInfo(15 /* dconst_1 */, 0 /* Void */, [], ['1.0'], 'push the constant 1.0 onto the stack'),
+    new OpcodeInfo(16 /* bipush */, 3 /* S8 */, [], ['value'], 'push a byte onto the stack as an integer value'),
+    new OpcodeInfo(17 /* sipush */, 5 /* S16 */, [], ['value'], 'push a short onto the stack'),
+    new OpcodeInfo(18 /* ldc */, 2 /* U8 */, [], ['value'], 'push a constant #index from a constant pool (String, int or float) onto the stack'),
+    new OpcodeInfo(19 /* ldc_w */, 4 /* U16 */, [], ['value'], 'push a constant #index from a constant pool (String, int or float) onto the stack (wide index is constructed as indexbyte1 << 8 + indexbyte2)'),
+    new OpcodeInfo(20 /* ldc2_w */, 4 /* U16 */, [], ['value'], 'push a constant #index from a constant pool (double or long) onto the stack (wide index is constructed as indexbyte1 << 8 + indexbyte2)'),
+    new OpcodeInfo(21 /* iload */, 2 /* U8 */, [], ['value'], 'load an int value from a local variable #index'),
+    new OpcodeInfo(22 /* lload */, 2 /* U8 */, [], ['value'], 'load a long value from a local variable #index'),
+    new OpcodeInfo(23 /* fload */, 2 /* U8 */, [], ['value'], 'load a float value from a local variable #index'),
+    new OpcodeInfo(24 /* dload */, 2 /* U8 */, [], ['value'], 'load a double value from a local variable #index'),
+    new OpcodeInfo(25 /* aload */, 2 /* U8 */, [], ['objectref'], 'load a reference onto the stack from a local variable #index'),
+    new OpcodeInfo(26 /* iload_0 */, 0 /* Void */, [], ['value'], 'load an int value from local variable 0'),
+    new OpcodeInfo(27 /* iload_1 */, 0 /* Void */, [], ['value'], 'load an int value from local variable 1'),
+    new OpcodeInfo(28 /* iload_2 */, 0 /* Void */, [], ['value'], 'load an int value from local variable 2'),
+    new OpcodeInfo(29 /* iload_3 */, 0 /* Void */, [], ['value'], 'load an int value from local variable 3'),
+    new OpcodeInfo(30 /* lload_0 */, 0 /* Void */, [], ['value'], 'load a long value from local variable 0'),
+    new OpcodeInfo(31 /* lload_1 */, 0 /* Void */, [], ['value'], 'load a long value from local variable 1'),
+    new OpcodeInfo(32 /* lload_2 */, 0 /* Void */, [], ['value'], 'load a long value from local variable 2'),
+    new OpcodeInfo(33 /* lload_3 */, 0 /* Void */, [], ['value'], 'load a long value from local variable 3'),
+    new OpcodeInfo(34 /* fload_0 */, 0 /* Void */, [], ['value'], 'load a float value from local variable 0'),
+    new OpcodeInfo(35 /* fload_1 */, 0 /* Void */, [], ['value'], 'load a float value from local variable 1'),
+    new OpcodeInfo(36 /* fload_2 */, 0 /* Void */, [], ['value'], 'load a float value from local variable 2'),
+    new OpcodeInfo(37 /* fload_3 */, 0 /* Void */, [], ['value'], 'load a float value from local variable 3'),
+    new OpcodeInfo(38 /* dload_0 */, 0 /* Void */, [], ['value'], 'load a double value from local variable 0'),
+    new OpcodeInfo(39 /* dload_1 */, 0 /* Void */, [], ['value'], 'load a double value from local variable 1'),
+    new OpcodeInfo(40 /* dload_2 */, 0 /* Void */, [], ['value'], 'load a double value from local variable 2'),
+    new OpcodeInfo(41 /* dload_3 */, 0 /* Void */, [], ['value'], 'load a double value from local variable 3'),
+    new OpcodeInfo(42 /* aload_0 */, 0 /* Void */, [], ['objectref'], 'load a reference onto the stack from local variable 0'),
+    new OpcodeInfo(43 /* aload_1 */, 0 /* Void */, [], ['objectref'], 'load a reference onto the stack from local variable 1'),
+    new OpcodeInfo(44 /* aload_2 */, 0 /* Void */, [], ['objectref'], 'load a reference onto the stack from local variable 2'),
+    new OpcodeInfo(45 /* aload_3 */, 0 /* Void */, [], ['objectref'], 'load a reference onto the stack from local variable 3'),
+    new OpcodeInfo(46 /* iaload */, 0 /* Void */, ['arrayref', 'index'], ['value'], 'load an int from an array'),
+    new OpcodeInfo(47 /* laload */, 0 /* Void */, ['arrayref', 'index'], ['value'], 'load a long from an array'),
+    new OpcodeInfo(48 /* faload */, 0 /* Void */, ['arrayref', 'index'], ['value'], 'load a float from an array'),
+    new OpcodeInfo(49 /* daload */, 0 /* Void */, ['arrayref', 'index'], ['value'], 'load a double from an array'),
+    new OpcodeInfo(50 /* aaload */, 0 /* Void */, ['arrayref', 'index'], ['objectref'], 'load onto the stack a reference from an array'),
+    new OpcodeInfo(51 /* baload */, 0 /* Void */, ['arrayref', 'index'], ['value'], 'load a byte or Boolean value from an array'),
+    new OpcodeInfo(52 /* caload */, 0 /* Void */, ['arrayref', 'index'], ['value'], 'load a char from an array'),
+    new OpcodeInfo(53 /* saload */, 0 /* Void */, ['arrayref', 'index'], ['value'], 'load short from array'),
+    new OpcodeInfo(54 /* istore */, 2 /* U8 */, ['value'], [''], 'store int value into variable #index'),
+    new OpcodeInfo(55 /* lstore */, 2 /* U8 */, ['value'], [''], 'store a long value in a local variable #index'),
+    new OpcodeInfo(56 /* fstore */, 2 /* U8 */, ['value'], [''], 'store a float value in a local variable #index'),
+    new OpcodeInfo(57 /* dstore */, 2 /* U8 */, ['value'], [''], 'store a double value in a local variable #index'),
+    new OpcodeInfo(58 /* astore */, 2 /* U8 */, ['objectref'], [''], 'store a reference in a local variable #index'),
+    new OpcodeInfo(59 /* istore_0 */, 0 /* Void */, ['value'], [''], 'store int value into variable 0'),
+    new OpcodeInfo(60 /* istore_1 */, 0 /* Void */, ['value'], [''], 'store int value into variable 1'),
+    new OpcodeInfo(61 /* istore_2 */, 0 /* Void */, ['value'], [''], 'store int value into variable 2'),
+    new OpcodeInfo(62 /* istore_3 */, 0 /* Void */, ['value'], [''], 'store int value into variable 3'),
+    new OpcodeInfo(63 /* lstore_0 */, 0 /* Void */, ['value'], [''], 'store long value into variable 0'),
+    new OpcodeInfo(64 /* lstore_1 */, 0 /* Void */, ['value'], [''], 'store long value into variable 1'),
+    new OpcodeInfo(65 /* lstore_2 */, 0 /* Void */, ['value'], [''], 'store long value into variable 2'),
+    new OpcodeInfo(66 /* lstore_3 */, 0 /* Void */, ['value'], [''], 'store long value into variable 3'),
+    new OpcodeInfo(67 /* fstore_0 */, 0 /* Void */, ['value'], [''], 'store float value into variable 0'),
+    new OpcodeInfo(68 /* fstore_1 */, 0 /* Void */, ['value'], [''], 'store float value into variable 1'),
+    new OpcodeInfo(69 /* fstore_2 */, 0 /* Void */, ['value'], [''], 'store float value into variable 2'),
+    new OpcodeInfo(70 /* fstore_3 */, 0 /* Void */, ['value'], [''], 'store float value into variable 3'),
+    new OpcodeInfo(71 /* dstore_0 */, 0 /* Void */, ['value'], [''], 'store double value into variable 0'),
+    new OpcodeInfo(72 /* dstore_1 */, 0 /* Void */, ['value'], [''], 'store double value into variable 1'),
+    new OpcodeInfo(73 /* dstore_2 */, 0 /* Void */, ['value'], [''], 'store double value into variable 2'),
+    new OpcodeInfo(74 /* dstore_3 */, 0 /* Void */, ['value'], [''], 'store double value into variable 3'),
+    new OpcodeInfo(75 /* astore_0 */, 0 /* Void */, ['objectref'], [''], 'store reference into variable 0'),
+    new OpcodeInfo(76 /* astore_1 */, 0 /* Void */, ['objectref'], [''], 'store reference into variable 1'),
+    new OpcodeInfo(77 /* astore_2 */, 0 /* Void */, ['objectref'], [''], 'store reference into variable 2'),
+    new OpcodeInfo(78 /* astore_3 */, 0 /* Void */, ['objectref'], [''], 'store reference into variable 3'),
+    new OpcodeInfo(79 /* iastore */, 0 /* Void */, ['arrayref', 'index', 'value'], [''], 'store an int into an array'),
+    new OpcodeInfo(80 /* lastore */, 0 /* Void */, ['arrayref', 'index', 'value'], [''], 'store a long into an array'),
+    new OpcodeInfo(81 /* fastore */, 0 /* Void */, ['arrayref', 'index', 'value'], [''], 'store a float into an array'),
+    new OpcodeInfo(82 /* dastore */, 0 /* Void */, ['arrayref', 'index', 'value'], [''], 'store a double into an array'),
+    new OpcodeInfo(83 /* aastore */, 0 /* Void */, ['arrayref', 'index', 'value'], [''], 'store a reference in an array'),
+    new OpcodeInfo(84 /* bastore */, 0 /* Void */, ['arrayref', 'index', 'value'], [''], 'store a byte or Boolean value into an array'),
+    new OpcodeInfo(85 /* castore */, 0 /* Void */, ['arrayref', 'index', 'value'], [''], 'store a char value into an array'),
+    new OpcodeInfo(86 /* sastore */, 0 /* Void */, ['arrayref', 'index', 'value'], [''], 'store a short value into an array'),
+    new OpcodeInfo(87 /* pop */, 0 /* Void */, ['value'], [''], 'discard the top value on the stack'),
+    new OpcodeInfo(88 /* pop2 */, 0 /* Void */, ['value2', 'value1'], [''], 'discard the top two values on the stack (or one value, if it is a double or long)'),
+    new OpcodeInfo(89 /* dup */, 0 /* Void */, ['value'], ['value', 'value'], 'duplicate the value on top of the stack'),
+    new OpcodeInfo(90 /* dup_x1 */, 0 /* Void */, ['value2', 'value1'], ['value1', 'value2', 'value1'], 'insert a copy of the top value into the stack two values from the top. value1 and value2 must not be of the type double or long.'),
+    new OpcodeInfo(91 /* dup_x2 */, 0 /* Void */, ['value3', 'value2', 'value1'], ['value1', 'value3', 'value2', 'value1'], 'insert a copy of the top value into the stack two values from the top. value1 and value2 must not be of the type double or long.'),
+    new OpcodeInfo(92 /* dup2 */, 0 /* Void */, ['value2', 'value1'], ['value2', 'value1', 'value2', 'value1'], 'duplicate top two stack words (two values, if value1 is not double nor long; a single value, if value1 is double or long)'),
+    new OpcodeInfo(93 /* dup2_x1 */, 0 /* Void */, ['value3', 'value2', 'value1'], ['value2', 'value1', 'value3', 'value2', 'value1'], 'duplicate two words and insert beneath third word (see explanation above)'),
+    new OpcodeInfo(94 /* dup2_x2 */, 0 /* Void */, ['value4', 'value3', 'value2', 'value1'], ['value2', 'value1', 'value4', 'value3', 'value2', 'value1'], 'duplicate two words and insert beneath fourth word'),
+    new OpcodeInfo(95 /* swap */, 0 /* Void */, ['value2', 'value1'], ['value1', 'value2'], 'swaps two top words on the stack (note that value1 and value2 must not be double or long)'),
+    new OpcodeInfo(96 /* iadd */, 0 /* Void */, ['value1', 'value2'], ['result'], 'add two ints'),
+    new OpcodeInfo(97 /* ladd */, 0 /* Void */, ['value1', 'value2'], ['result'], 'add two longs'),
+    new OpcodeInfo(98 /* fadd */, 0 /* Void */, ['value1', 'value2'], ['result'], 'add two floats'),
+    new OpcodeInfo(99 /* dadd */, 0 /* Void */, ['value1', 'value2'], ['result'], 'add two doubles'),
+    new OpcodeInfo(100 /* isub */, 0 /* Void */, ['value1', 'value2'], ['result'], 'subtract two ints'),
+    new OpcodeInfo(101 /* lsub */, 0 /* Void */, ['value1', 'value2'], ['result'], 'subtract two longs'),
+    new OpcodeInfo(102 /* fsub */, 0 /* Void */, ['value1', 'value2'], ['result'], 'subtract two floats'),
+    new OpcodeInfo(103 /* dsub */, 0 /* Void */, ['value1', 'value2'], ['result'], 'subtract two doubles'),
+    new OpcodeInfo(104 /* imul */, 0 /* Void */, ['value1', 'value2'], ['result'], 'multiply two ints'),
+    new OpcodeInfo(105 /* lmul */, 0 /* Void */, ['value1', 'value2'], ['result'], 'multiply two longs'),
+    new OpcodeInfo(106 /* fmul */, 0 /* Void */, ['value1', 'value2'], ['result'], 'multiply two floats'),
+    new OpcodeInfo(107 /* dmul */, 0 /* Void */, ['value1', 'value2'], ['result'], 'multiply two doubles'),
+    new OpcodeInfo(108 /* idiv */, 0 /* Void */, ['value1', 'value2'], ['result'], 'divide two ints'),
+    new OpcodeInfo(109 /* ldiv */, 0 /* Void */, ['value1', 'value2'], ['result'], 'divide two longs'),
+    new OpcodeInfo(110 /* fdiv */, 0 /* Void */, ['value1', 'value2'], ['result'], 'divide two floats'),
+    new OpcodeInfo(111 /* ddiv */, 0 /* Void */, ['value1', 'value2'], ['result'], 'divide two doubles'),
+    new OpcodeInfo(112 /* irem */, 0 /* Void */, ['value1', 'value2'], ['result'], 'remainder of two ints'),
+    new OpcodeInfo(113 /* lrem */, 0 /* Void */, ['value1', 'value2'], ['result'], 'remainder of two longs'),
+    new OpcodeInfo(114 /* frem */, 0 /* Void */, ['value1', 'value2'], ['result'], 'remainder of two floats'),
+    new OpcodeInfo(115 /* drem */, 0 /* Void */, ['value1', 'value2'], ['result'], 'remainder of two doubles'),
+    new OpcodeInfo(116 /* ineg */, 0 /* Void */, ['value'], ['result'], 'negate ints'),
+    new OpcodeInfo(116 /* ineg */, 0 /* Void */, ['value'], ['result'], 'negate longs'),
+    new OpcodeInfo(116 /* ineg */, 0 /* Void */, ['value'], ['result'], 'negate floats'),
+    new OpcodeInfo(116 /* ineg */, 0 /* Void */, ['value'], ['result'], 'negate doubles'),
+    new OpcodeInfo(120 /* ishl */, 0 /* Void */, ['value1', 'value2'], ['result'], 'int shift left'),
+    new OpcodeInfo(121 /* lshl */, 0 /* Void */, ['value1', 'value2'], ['result'], 'bitwise shift left of a long value1 by int value2 positions'),
+    new OpcodeInfo(122 /* ishr */, 0 /* Void */, ['value1', 'value2'], ['result'], 'int arithmetic shift right'),
+    new OpcodeInfo(123 /* lshr */, 0 /* Void */, ['value1', 'value2'], ['result'], 'bitwise arithmetic shift right of a long value1 by int value2 positions'),
+    new OpcodeInfo(124 /* iushr */, 0 /* Void */, ['value1', 'value2'], ['result'], 'int logical shift right'),
+    new OpcodeInfo(125 /* lushr */, 0 /* Void */, ['value1', 'value2'], ['result'], 'bitwise logical shift right of a long value1 by int value2 positions'),
+    new OpcodeInfo(126 /* iand */, 0 /* Void */, ['value1', 'value2'], ['result'], 'bitwise and of two ints'),
+    new OpcodeInfo(127 /* land */, 0 /* Void */, ['value1', 'value2'], ['result'], 'bitwise and of two longs'),
+    new OpcodeInfo(128 /* ior */, 0 /* Void */, ['value1', 'value2'], ['result'], 'bitwise or of two ints'),
+    new OpcodeInfo(129 /* lor */, 0 /* Void */, ['value1', 'value2'], ['result'], 'bitwise or of two longs'),
+    new OpcodeInfo(130 /* ixor */, 0 /* Void */, ['value1', 'value2'], ['result'], 'bitwise xor of two ints'),
+    new OpcodeInfo(131 /* lxor */, 0 /* Void */, ['value1', 'value2'], ['result'], 'bitwise xor of two longs'),
+    new OpcodeInfo(132 /* iinc */, 8 /* U8_S8 */, [], [], 'increment local variable #index by signed byte const'),
+    new OpcodeInfo(133 /* i2l */, 0 /* Void */, ['value'], ['result'], 'convert an int into a long'),
+    new OpcodeInfo(134 /* i2f */, 0 /* Void */, ['value'], ['result'], 'convert an int into a float'),
+    new OpcodeInfo(135 /* i2d */, 0 /* Void */, ['value'], ['result'], 'convert an int into a double'),
+    new OpcodeInfo(136 /* l2i */, 0 /* Void */, ['value'], ['result'], 'convert a long to a int'),
+    new OpcodeInfo(137 /* l2f */, 0 /* Void */, ['value'], ['result'], 'convert a long to a float'),
+    new OpcodeInfo(138 /* l2d */, 0 /* Void */, ['value'], ['result'], 'convert a long to a double'),
+    new OpcodeInfo(139 /* f2i */, 0 /* Void */, ['value'], ['result'], 'convert a float to a int'),
+    new OpcodeInfo(140 /* f2l */, 0 /* Void */, ['value'], ['result'], 'convert a float to a long'),
+    new OpcodeInfo(141 /* f2d */, 0 /* Void */, ['value'], ['result'], 'convert a float to a double'),
+    new OpcodeInfo(142 /* d2i */, 0 /* Void */, ['value'], ['result'], 'convert a double to a int'),
+    new OpcodeInfo(143 /* d2l */, 0 /* Void */, ['value'], ['result'], 'convert a double to a long'),
+    new OpcodeInfo(144 /* d2f */, 0 /* Void */, ['value'], ['result'], 'convert a double to a float'),
+    new OpcodeInfo(145 /* i2b */, 0 /* Void */, ['value'], ['result'], 'convert an int into a byte'),
+    new OpcodeInfo(146 /* i2c */, 0 /* Void */, ['value'], ['result'], 'convert an int into a character'),
+    new OpcodeInfo(147 /* i2s */, 0 /* Void */, ['value'], ['result'], 'convert an int into a short'),
+    new OpcodeInfo(148 /* lcmp */, 0 /* Void */, ['value1', 'value2'], ['result'], 'compare two longs values'),
+    new OpcodeInfo(149 /* fcmpl */, 0 /* Void */, ['value1', 'value2'], ['result'], 'compare two floats less'),
+    new OpcodeInfo(150 /* fcmpg */, 0 /* Void */, ['value1', 'value2'], ['result'], 'compare two floats greater'),
+    new OpcodeInfo(151 /* dcmpl */, 0 /* Void */, ['value1', 'value2'], ['result'], 'compare two doubles less'),
+    new OpcodeInfo(152 /* dcmpg */, 0 /* Void */, ['value1', 'value2'], ['result'], 'compare two doubles greater'),
+    new OpcodeInfo(153 /* ifeq */, 5 /* S16 */, ['value'], [], 'if value is 0, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(154 /* ifne */, 5 /* S16 */, ['value'], [], 'if value is not 0, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(155 /* iflt */, 5 /* S16 */, ['value'], [], 'if value is less than 0, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(156 /* ifge */, 5 /* S16 */, ['value'], [], 'if value is greater than or equal to 0, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(157 /* ifgt */, 5 /* S16 */, ['value'], [], 'if value is greater than 0, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(158 /* ifle */, 5 /* S16 */, ['value'], [], 'if value is less than or equal to 0, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(159 /* if_icmpeq */, 5 /* S16 */, ['value1', 'value2'], [], 'if ints are equal, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(160 /* if_icmpne */, 5 /* S16 */, ['value1', 'value2'], [], 'ifif ints are not equal, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(161 /* if_icmplt */, 5 /* S16 */, ['value1', 'value2'], [], 'if value1 is less than value2, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(162 /* if_icmpge */, 5 /* S16 */, ['value1', 'value2'], [], 'if value1 is greater than or equal to value2, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(163 /* if_icmpgt */, 5 /* S16 */, ['value1', 'value2'], [], 'if value1 is greater than value2, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(164 /* if_icmple */, 5 /* S16 */, ['value1', 'value2'], [], 'if value1 is less than or equal to value2, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(165 /* if_acmpeq */, 5 /* S16 */, ['value1', 'value2'], [], 'if references are equal, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(166 /* if_acmpne */, 5 /* S16 */, ['value1', 'value2'], [], 'if references are not equal, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(167 /* goto */, 5 /* S16 */, [], [], 'goes to another instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(168 /* jsr */, 5 /* S16 */, [], ['address'], 'jump to subroutine at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2) and place the return address on the stack'),
+    new OpcodeInfo(169 /* ret */, 2 /* U8 */, [], [], 'continue execution from address taken from a local variable #index (the asymmetry with jsr is intentional)'),
+    new OpcodeInfo(170 /* tableswitch */, 10 /* TableSwitch */, ['index'], [], 'continue execution from an address in the table at offset index'),
+    new OpcodeInfo(171 /* lookupswitch */, 11 /* LookupSwitch */, ['key'], [], 'a target address is looked up from a table using a key and execution continues from the instruction at that address'),
+    new OpcodeInfo(172 /* ireturn */, 0 /* Void */, ['value'], null, 'return an integer from a method'),
+    new OpcodeInfo(173 /* lreturn */, 0 /* Void */, ['value'], null, 'return a long value'),
+    new OpcodeInfo(174 /* freturn */, 0 /* Void */, ['value'], null, 'return a float value'),
+    new OpcodeInfo(175 /* dreturn */, 0 /* Void */, ['value'], null, 'return a double value'),
+    new OpcodeInfo(176 /* areturn */, 0 /* Void */, ['objectref'], null, 'return a reference'),
+    new OpcodeInfo(177 /* Return */, 0 /* Void */, [], null, 'return void from method'),
+    new OpcodeInfo(178 /* getstatic */, 4 /* U16 */, [], ['value'], 'get a static field value of a class, where the field is identified by field reference in the constant pool index (index1 << 8 + index2)'),
+    new OpcodeInfo(179 /* putstatic */, 4 /* U16 */, ['value'], [], 'set static field to value in a class, where the field is identified by a field reference index in constant pool (indexbyte1 << 8 + indexbyte2'),
+    new OpcodeInfo(180 /* getfield */, 4 /* U16 */, ['objectref'], ['value'], 'get a field value of an object objectref, where the field is identified by field reference in the constant pool index (index1 << 8 + index2)'),
+    new OpcodeInfo(181 /* putfield */, 4 /* U16 */, ['objectref', 'value'], [], 'set field to value in an object objectref, where the field is identified by a field reference index in constant pool (indexbyte1 << 8 + indexbyte2)'),
+    new OpcodeInfo(182 /* invokevirtual */, 4 /* U16 */, null, null, 'invoke virtual method on object objectref, where the method is identified by method reference index in constant pool (indexbyte1 << 8 + indexbyte2)'),
+    new OpcodeInfo(183 /* invokespecial */, 4 /* U16 */, null, null, 'invoke instance method on object objectref, where the method is identified by method reference index in constant pool (indexbyte1 << 8 + indexbyte2)'),
+    new OpcodeInfo(184 /* invokestatic */, 4 /* U16 */, null, null, 'invoke a static method, where the method is identified by method reference index in constant pool (indexbyte1 << 8 + indexbyte2)'),
+    new OpcodeInfo(185 /* invokeinterface */, 4 /* U16 */, null, null, 'invokes an interface method on object objectref, where the interface method is identified by method reference index in constant pool (indexbyte1 << 8 + indexbyte2)'),
+    new OpcodeInfo(186 /* invokedynamic */, 4 /* U16 */, null, null, 'invokes a dynamic method identified by method reference index in constant pool (indexbyte1 << 8 + indexbyte2)'),
+    new OpcodeInfo(187 /* new */, 4 /* U16 */, [], ['objectref'], 'create new object of type identified by class reference in constant pool index (indexbyte1 << 8 + indexbyte2)'),
+    new OpcodeInfo(188 /* newarray */, 2 /* U8 */, ['count'], ['arrayref'], 'create new array with count elements of primitive type identified by atype'),
+    new OpcodeInfo(189 /* anewarray */, 4 /* U16 */, ['count'], ['arrayref'], 'create a new array of references of length count and component type identified by the class reference index (indexbyte1 << 8 + indexbyte2) in the constant pool'),
+    new OpcodeInfo(190 /* arraylength */, 0 /* Void */, ['arrayref'], ['length'], 'get the length of an array'),
+    new OpcodeInfo(191 /* athrow */, 0 /* Void */, ['objectref'], null, 'throws an error or exception (notice that the rest of the stack is cleared, leaving only a reference to the Throwable)'),
+    new OpcodeInfo(192 /* checkcast */, 4 /* U16 */, ['objectref'], ['objectref'], 'checks whether an objectref is of a certain type, the class reference of which is in the constant pool at index (indexbyte1 << 8 + indexbyte2)'),
+    new OpcodeInfo(193 /* instanceof */, 4 /* U16 */, ['objectref'], ['result'], 'determines if an object objectref is of a given type, identified by class reference index in constant pool (indexbyte1 << 8 + indexbyte2)'),
+    new OpcodeInfo(194 /* monitorenter */, 0 /* Void */, ['objectref'], [], 'enter monitor for object ("grab the lock" - start of synchronized() section)'),
+    new OpcodeInfo(195 /* monitorexit */, 0 /* Void */, ['objectref'], [], 'exit monitor for object ("release the lock" - end of synchronized() section)'),
+    new OpcodeInfo(196 /* wide */, 1 /* Special */, null, null, 'execute opcode, where opcode is either iload, fload, aload, lload, dload, istore, fstore, astore, lstore, dstore, or ret, but assume the index is 16 bit; or execute iinc, where the index is 16 bits and the constant to increment by is a signed 16 bit short'),
+    new OpcodeInfo(197 /* multianewarray */, 9 /* U16_U8 */, null, ['arrayref'], 'create a new array of dimensions dimensions with elements of type identified by class reference in constant pool index (indexbyte1 << 8 + indexbyte2); the sizes of each dimension is identified by count1, [count2, etc.]'),
+    new OpcodeInfo(198 /* ifnull */, 5 /* S16 */, ['value'], [], 'if value is null, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(199 /* ifnonnull */, 5 /* S16 */, ['value'], [], 'if value is not null, branch to instruction at branchoffset (signed short constructed from unsigned bytes branchbyte1 << 8 + branchbyte2)'),
+    new OpcodeInfo(200 /* goto_w */, 7 /* S32 */, [], [], 'goes to another instruction at branchoffset (signed int constructed from unsigned bytes branchbyte1 << 24 + branchbyte2 << 16 + branchbyte3 << 8 + branchbyte4)'),
+    new OpcodeInfo(201 /* jsr_w */, 7 /* S32 */, [], [], 'jump to subroutine at branchoffset (signed int constructed from unsigned bytes branchbyte1 << 24 + branchbyte2 << 16 + branchbyte3 << 8 + branchbyte4) and place the return address on the stack'),
+    new OpcodeInfo(202 /* breakpoint */, 0 /* Void */, [], [], 'reserved for breakpoints in Java debuggers; should not appear in any class file'),
+    new OpcodeInfo(254 /* impdep1 */, 0 /* Void */, [], [], 'reserved for implementation-dependent operations within debuggers; should not appear in any class file'),
+    new OpcodeInfo(255 /* impdep2 */, 0 /* Void */, [], [], 'reserved for implementation-dependent operations within debuggers; should not appear in any class file')
+];
 
 (function (ACC_CLASS) {
     ACC_CLASS[ACC_CLASS["PUBLIC"] = 0x0001] = "PUBLIC";
@@ -507,10 +753,11 @@ var JavaAttributeInfo = (function () {
 exports.JavaAttributeInfo = JavaAttributeInfo;
 
 var Instruction = (function () {
-    function Instruction(offset, op, param, param2) {
+    function Instruction(offset, op, stackOffset, param, param2) {
         if (typeof param2 === "undefined") { param2 = null; }
         this.offset = offset;
         this.op = op;
+        this.stackOffset = stackOffset;
         this.param = param;
         this.param2 = param2;
         this.name = Opcode[op];
@@ -525,19 +772,20 @@ var InstructionReader = (function () {
     InstructionReader.read = function (code) {
         var offset = code.position;
         var op = code.readUInt8();
+        var stackOffset = 0;
         switch (op) {
             case 170 /* tableswitch */:
                 throw (new Error("Not implemented tableswitch"));
             case 171 /* lookupswitch */:
                 throw (new Error("Not implemented lookupswitch"));
             case 16 /* bipush */:
-                return new Instruction(offset, op, code.readUInt8());
+                return new Instruction(offset, op, stackOffset, code.readUInt8());
             case 17 /* sipush */:
-                return new Instruction(offset, op, code.readUInt16BE());
+                return new Instruction(offset, op, stackOffset, code.readUInt16BE());
             case 18 /* ldc */:
-                return new Instruction(offset, op, code.readUInt8());
+                return new Instruction(offset, op, stackOffset, code.readUInt8());
             case 132 /* iinc */:
-                return new Instruction(offset, op, code.readUInt8(), code.readInt8());
+                return new Instruction(offset, op, stackOffset, code.readUInt8(), code.readInt8());
             case 188 /* newarray */:
                 throw (new Error("Not implemented newarray"));
             case 196 /* wide */:
@@ -563,7 +811,7 @@ var InstructionReader = (function () {
             case 57 /* dstore */:
             case 58 /* astore */:
             case 169 /* ret */:
-                return new Instruction(offset, op, code.readUInt8());
+                return new Instruction(offset, op, stackOffset, code.readUInt8());
 
             case 19 /* ldc_w */:
             case 20 /* ldc2_w */:
@@ -578,7 +826,7 @@ var InstructionReader = (function () {
             case 189 /* anewarray */:
             case 192 /* checkcast */:
             case 193 /* instanceof */:
-                return new Instruction(offset, op, code.readUInt16BE());
+                return new Instruction(offset, op, stackOffset, code.readUInt16BE());
 
             case 153 /* ifeq */:
             case 154 /* ifne */:
@@ -598,10 +846,10 @@ var InstructionReader = (function () {
             case 168 /* jsr */:
             case 198 /* ifnull */:
             case 199 /* ifnonnull */:
-                return new Instruction(offset, op, offset + code.readInt16BE());
+                return new Instruction(offset, op, stackOffset, offset + code.readInt16BE());
 
             default:
-                return new Instruction(offset, op, null);
+                return new Instruction(offset, op, stackOffset, null);
         }
     };
     return InstructionReader;
@@ -618,8 +866,9 @@ var JavaMethod = (function () {
     }
     JavaMethod.prototype.parse = function () {
         var _this = this;
-        var methodType = JavaMethodType.demangle(this.methodTypeStr);
-        console.log('JavaMethod.parse() -> ', this.name, this.methodTypeStr, methodType.mangled);
+        var methodType = JavaTypeMethod.demangle(this.methodTypeStr);
+
+        //console.log('JavaMethod.parse() -> ', this.name, this.methodTypeStr, methodType.mangled);
         this.info.attributes.forEach(function (attribute) {
             var attribute_name = _this.pool.getString(attribute.index);
 
@@ -631,8 +880,8 @@ var JavaMethod = (function () {
                 var max_locals = attr2.readInt16BE();
                 var code_length = attr2.readInt32BE();
                 var code = new Stream(attr2.readBytes(code_length));
-                console.log('max_stack_locals', max_stack, max_locals);
 
+                //console.log('max_stack_locals', max_stack, max_locals);
                 var instructions = [];
                 while (!code.eof) {
                     instructions.push(InstructionReader.read(code));
@@ -811,29 +1060,29 @@ var JavaType = (function () {
                         break;
                     out += c;
                 }
-                return new JavaObject(out);
+                return new JavaTypeObject(out);
             case 'V':
-                return new JavaVoid();
+                return new JavaTypeVoid();
             case 'I':
-                return new JavaInteger();
+                return new JavaTypeInteger();
             case 'J':
-                return new JavaLong();
+                return new JavaTypeLong();
             case 'F':
-                return new JavaFloat();
+                return new JavaTypeFloat();
             case 'B':
-                return new JavaByte();
+                return new JavaTypeByte();
             case 'Z':
-                return new JavaBoolean();
+                return new JavaTypeBoolean();
             case 'S':
-                return new JavaShort();
+                return new JavaTypeShort();
             case 'C':
-                return new JavaCharacter();
+                return new JavaTypeCharacter();
             case 'D':
-                return new JavaDouble();
+                return new JavaTypeDouble();
             case 'F':
-                return new JavaFloat();
+                return new JavaTypeFloat();
             case '[':
-                return new JavaArray(JavaType._demangle(data));
+                return new JavaTypeArray(JavaType._demangle(data));
             case ')':
                 return null;
 
@@ -844,118 +1093,118 @@ var JavaType = (function () {
     return JavaType;
 })();
 
-var JavaRef = (function (_super) {
-    __extends(JavaRef, _super);
-    function JavaRef() {
+var JavaTypeRef = (function (_super) {
+    __extends(JavaTypeRef, _super);
+    function JavaTypeRef() {
         _super.apply(this, arguments);
         this.mangled = "";
     }
-    return JavaRef;
+    return JavaTypeRef;
 })(JavaType);
-var JavaVoid = (function (_super) {
-    __extends(JavaVoid, _super);
-    function JavaVoid() {
+var JavaTypeVoid = (function (_super) {
+    __extends(JavaTypeVoid, _super);
+    function JavaTypeVoid() {
         _super.apply(this, arguments);
         this.mangled = "V";
     }
-    return JavaVoid;
+    return JavaTypeVoid;
 })(JavaType);
-var JavaBoolean = (function (_super) {
-    __extends(JavaBoolean, _super);
-    function JavaBoolean() {
+var JavaTypeBoolean = (function (_super) {
+    __extends(JavaTypeBoolean, _super);
+    function JavaTypeBoolean() {
         _super.apply(this, arguments);
         this.mangled = "Z";
     }
-    return JavaBoolean;
+    return JavaTypeBoolean;
 })(JavaType);
-var JavaByte = (function (_super) {
-    __extends(JavaByte, _super);
-    function JavaByte() {
+var JavaTypeByte = (function (_super) {
+    __extends(JavaTypeByte, _super);
+    function JavaTypeByte() {
         _super.apply(this, arguments);
         this.mangled = "B";
     }
-    return JavaByte;
+    return JavaTypeByte;
 })(JavaType);
-var JavaShort = (function (_super) {
-    __extends(JavaShort, _super);
-    function JavaShort() {
+var JavaTypeShort = (function (_super) {
+    __extends(JavaTypeShort, _super);
+    function JavaTypeShort() {
         _super.apply(this, arguments);
         this.mangled = "S";
     }
-    return JavaShort;
+    return JavaTypeShort;
 })(JavaType);
-var JavaCharacter = (function (_super) {
-    __extends(JavaCharacter, _super);
-    function JavaCharacter() {
+var JavaTypeCharacter = (function (_super) {
+    __extends(JavaTypeCharacter, _super);
+    function JavaTypeCharacter() {
         _super.apply(this, arguments);
         this.mangled = "C";
         this.boxed_name = 'Ljava/lang/Character;';
     }
-    return JavaCharacter;
+    return JavaTypeCharacter;
 })(JavaType);
-var JavaInteger = (function (_super) {
-    __extends(JavaInteger, _super);
-    function JavaInteger() {
+var JavaTypeInteger = (function (_super) {
+    __extends(JavaTypeInteger, _super);
+    function JavaTypeInteger() {
         _super.apply(this, arguments);
         this.mangled = "I";
     }
-    return JavaInteger;
+    return JavaTypeInteger;
 })(JavaType);
-var JavaObject = (function (_super) {
-    __extends(JavaObject, _super);
-    function JavaObject(type) {
+var JavaTypeObject = (function (_super) {
+    __extends(JavaTypeObject, _super);
+    function JavaTypeObject(type) {
         _super.call(this);
         this.type = type;
         this.mangled = 'T' + type + ';';
     }
-    return JavaObject;
+    return JavaTypeObject;
 })(JavaType);
-var JavaFloat = (function (_super) {
-    __extends(JavaFloat, _super);
-    function JavaFloat() {
+var JavaTypeFloat = (function (_super) {
+    __extends(JavaTypeFloat, _super);
+    function JavaTypeFloat() {
         _super.apply(this, arguments);
         this.mangled = "F";
     }
-    return JavaFloat;
+    return JavaTypeFloat;
 })(JavaType);
-var JavaDouble = (function (_super) {
-    __extends(JavaDouble, _super);
-    function JavaDouble() {
+var JavaTypeDouble = (function (_super) {
+    __extends(JavaTypeDouble, _super);
+    function JavaTypeDouble() {
         _super.apply(this, arguments);
         this.mangled = "D";
     }
-    return JavaDouble;
+    return JavaTypeDouble;
 })(JavaType);
-var JavaLong = (function (_super) {
-    __extends(JavaLong, _super);
-    function JavaLong() {
+var JavaTypeLong = (function (_super) {
+    __extends(JavaTypeLong, _super);
+    function JavaTypeLong() {
         _super.apply(this, arguments);
         this.mangled = "J";
     }
-    return JavaLong;
+    return JavaTypeLong;
 })(JavaType);
-var JavaArray = (function (_super) {
-    __extends(JavaArray, _super);
-    function JavaArray(type) {
+var JavaTypeArray = (function (_super) {
+    __extends(JavaTypeArray, _super);
+    function JavaTypeArray(type) {
         _super.call(this);
         this.type = type;
         this.mangled = '[' + type.mangled;
     }
-    return JavaArray;
+    return JavaTypeArray;
 })(JavaType);
 
-var JavaMethodType = (function (_super) {
-    __extends(JavaMethodType, _super);
-    function JavaMethodType() {
+var JavaTypeMethod = (function (_super) {
+    __extends(JavaTypeMethod, _super);
+    function JavaTypeMethod() {
         _super.apply(this, arguments);
         this.arguments = [];
         this.mangled = "";
     }
-    JavaMethodType.demangle = function (data) {
-        return JavaMethodType._demangle(new StringReader(data));
+    JavaTypeMethod.demangle = function (data) {
+        return JavaTypeMethod._demangle(new StringReader(data));
     };
-    JavaMethodType._demangle = function (str) {
-        var methodType = new JavaMethodType();
+    JavaTypeMethod._demangle = function (str) {
+        var methodType = new JavaTypeMethod();
         if (str.read() != '(')
             throw (new Error("Not a method type"));
         while (!str.eof) {
@@ -972,7 +1221,7 @@ var JavaMethodType = (function (_super) {
             throw (new Error("Not loaded the entire string"));
         return methodType;
     };
-    return JavaMethodType;
+    return JavaTypeMethod;
 })(JavaType);
 
 var Dynarec = (function () {
@@ -983,13 +1232,12 @@ var Dynarec = (function () {
         dynarec.process(instructions);
         var func;
 
-        console.log(dynarec.body);
-
         try  {
             func = Function.apply(null, range(methodType.arguments.length).map(function (index) {
                 return 'arg' + index;
             }).concat([dynarec.body]));
         } catch (e) {
+            console.info(dynarec.body);
             console.error(e);
             func = null;
         }
@@ -1023,38 +1271,38 @@ var DynarecProcessor = (function () {
             case 43 /* aload_1 */:
             case 44 /* aload_2 */:
             case 45 /* aload_3 */:
-                return processor._load(new JavaRef, op - 42 /* aload_0 */);
+                return processor._load(new JavaTypeRef, op - 42 /* aload_0 */);
             case 26 /* iload_0 */:
             case 27 /* iload_1 */:
             case 28 /* iload_2 */:
             case 29 /* iload_3 */:
-                return processor._load(new JavaInteger, op - 26 /* iload_0 */);
+                return processor._load(new JavaTypeInteger, op - 26 /* iload_0 */);
             case 30 /* lload_0 */:
             case 31 /* lload_1 */:
             case 32 /* lload_2 */:
             case 33 /* lload_3 */:
-                return processor._load(new JavaLong, op - 30 /* lload_0 */);
+                return processor._load(new JavaTypeLong, op - 30 /* lload_0 */);
             case 34 /* fload_0 */:
             case 35 /* fload_1 */:
             case 36 /* fload_2 */:
             case 37 /* fload_3 */:
-                return processor._load(new JavaFloat, op - 34 /* fload_0 */);
+                return processor._load(new JavaTypeFloat, op - 34 /* fload_0 */);
             case 38 /* dload_0 */:
             case 39 /* dload_1 */:
             case 40 /* dload_2 */:
             case 41 /* dload_3 */:
-                return processor._load(new JavaDouble, op - 38 /* dload_0 */);
+                return processor._load(new JavaTypeDouble, op - 38 /* dload_0 */);
 
             case 25 /* aload */:
-                return processor._load(new JavaRef, param);
+                return processor._load(new JavaTypeRef, param);
             case 21 /* iload */:
-                return processor._load(new JavaInteger, param);
+                return processor._load(new JavaTypeInteger, param);
             case 22 /* lload */:
-                return processor._load(new JavaLong, param);
+                return processor._load(new JavaTypeLong, param);
             case 23 /* fload */:
-                return processor._load(new JavaFloat, param);
+                return processor._load(new JavaTypeFloat, param);
             case 24 /* dload */:
-                return processor._load(new JavaDouble, param);
+                return processor._load(new JavaTypeDouble, param);
 
             case 50 /* aaload */:
                 return processor.aaload();
@@ -1065,38 +1313,38 @@ var DynarecProcessor = (function () {
             case 76 /* astore_1 */:
             case 77 /* astore_2 */:
             case 78 /* astore_3 */:
-                return processor._store(new JavaRef, op - 75 /* astore_0 */);
+                return processor._store(new JavaTypeRef, op - 75 /* astore_0 */);
             case 59 /* istore_0 */:
             case 60 /* istore_1 */:
             case 61 /* istore_2 */:
             case 62 /* istore_3 */:
-                return processor._store(new JavaInteger, op - 59 /* istore_0 */);
+                return processor._store(new JavaTypeInteger, op - 59 /* istore_0 */);
             case 63 /* lstore_0 */:
             case 64 /* lstore_1 */:
             case 65 /* lstore_2 */:
             case 66 /* lstore_3 */:
-                return processor._store(new JavaLong, op - 63 /* lstore_0 */);
+                return processor._store(new JavaTypeLong, op - 63 /* lstore_0 */);
             case 67 /* fstore_0 */:
             case 68 /* fstore_1 */:
             case 69 /* fstore_2 */:
             case 70 /* fstore_3 */:
-                return processor._store(new JavaFloat, op - 67 /* fstore_0 */);
+                return processor._store(new JavaTypeFloat, op - 67 /* fstore_0 */);
             case 71 /* dstore_0 */:
             case 72 /* dstore_1 */:
             case 73 /* dstore_2 */:
             case 74 /* dstore_3 */:
-                return processor._store(new JavaDouble, op - 71 /* dstore_0 */);
+                return processor._store(new JavaTypeDouble, op - 71 /* dstore_0 */);
 
             case 58 /* astore */:
-                return processor._store(new JavaRef, param);
+                return processor._store(new JavaTypeRef, param);
             case 54 /* istore */:
-                return processor._store(new JavaInteger, param);
+                return processor._store(new JavaTypeInteger, param);
             case 55 /* lstore */:
-                return processor._store(new JavaLong, param);
+                return processor._store(new JavaTypeLong, param);
             case 56 /* fstore */:
-                return processor._store(new JavaFloat, param);
+                return processor._store(new JavaTypeFloat, param);
             case 57 /* dstore */:
-                return processor._store(new JavaDouble, param);
+                return processor._store(new JavaTypeDouble, param);
 
             case 2 /* iconst_m1 */:
             case 3 /* iconst_0 */:
@@ -1105,14 +1353,14 @@ var DynarecProcessor = (function () {
             case 6 /* iconst_3 */:
             case 7 /* iconst_4 */:
             case 8 /* iconst_5 */:
-                return processor._const(new JavaInteger, op - 3 /* iconst_0 */);
+                return processor._const(new JavaTypeInteger, op - 3 /* iconst_0 */);
             case 9 /* lconst_0 */:
             case 10 /* lconst_1 */:
-                return processor._const(new JavaLong, op - 3 /* iconst_0 */);
+                return processor._const(new JavaTypeLong, op - 3 /* iconst_0 */);
             case 17 /* sipush */:
-                return processor._const(new JavaShort, param);
+                return processor._const(new JavaTypeShort, param);
             case 16 /* bipush */:
-                return processor._const(new JavaByte, param);
+                return processor._const(new JavaTypeByte, param);
 
             case 20 /* ldc2_w */:
                 return processor.ldc(param, true);
@@ -1129,44 +1377,44 @@ var DynarecProcessor = (function () {
                 return processor.getstatic(pool.get(param));
 
             case 177 /* Return */:
-                return processor._return(new JavaVoid);
+                return processor._return(new JavaTypeVoid);
             case 172 /* ireturn */:
-                return processor._return(new JavaInteger);
+                return processor._return(new JavaTypeInteger);
             case 174 /* freturn */:
-                return processor._return(new JavaFloat);
+                return processor._return(new JavaTypeFloat);
             case 175 /* dreturn */:
-                return processor._return(new JavaDouble);
+                return processor._return(new JavaTypeDouble);
             case 173 /* lreturn */:
-                return processor._return(new JavaLong);
+                return processor._return(new JavaTypeLong);
 
             case 132 /* iinc */:
                 return processor.iinc(param, param2);
 
             case 96 /* iadd */:
-                return processor._binop(new JavaInteger, '+');
+                return processor._binop(new JavaTypeInteger, '+');
             case 100 /* isub */:
-                return processor._binop(new JavaInteger, '-');
+                return processor._binop(new JavaTypeInteger, '-');
             case 126 /* iand */:
-                return processor._binop(new JavaInteger, '&');
+                return processor._binop(new JavaTypeInteger, '&');
             case 120 /* ishl */:
-                return processor._binop(new JavaInteger, '<<');
+                return processor._binop(new JavaTypeInteger, '<<');
             case 122 /* ishr */:
-                return processor._binop(new JavaInteger, '>>');
+                return processor._binop(new JavaTypeInteger, '>>');
             case 124 /* iushr */:
-                return processor._binop(new JavaInteger, '>>>');
+                return processor._binop(new JavaTypeInteger, '>>>');
 
             case 97 /* ladd */:
-                return processor._binop(new JavaLong, '+');
+                return processor._binop(new JavaTypeLong, '+');
             case 101 /* lsub */:
-                return processor._binop(new JavaLong, '+');
+                return processor._binop(new JavaTypeLong, '+');
             case 127 /* land */:
-                return processor._binop(new JavaLong, '&');
+                return processor._binop(new JavaTypeLong, '&');
             case 121 /* lshl */:
-                return processor._binop(new JavaLong, '<<');
+                return processor._binop(new JavaTypeLong, '<<');
             case 123 /* lshr */:
-                return processor._binop(new JavaLong, '>>');
+                return processor._binop(new JavaTypeLong, '>>');
             case 125 /* lushr */:
-                return processor._binop(new JavaLong, '>>>');
+                return processor._binop(new JavaTypeLong, '>>>');
 
             case 51 /* baload */:
                 return processor.baload();
@@ -1182,23 +1430,23 @@ var DynarecProcessor = (function () {
                 return processor.dup();
 
             case 145 /* i2b */:
-                return processor.convert(new JavaInteger, new JavaByte);
+                return processor.convert(new JavaTypeInteger, new JavaTypeByte);
             case 146 /* i2c */:
-                return processor.convert(new JavaInteger, new JavaCharacter);
+                return processor.convert(new JavaTypeInteger, new JavaTypeCharacter);
             case 135 /* i2d */:
-                return processor.convert(new JavaInteger, new JavaDouble);
+                return processor.convert(new JavaTypeInteger, new JavaTypeDouble);
             case 134 /* i2f */:
-                return processor.convert(new JavaInteger, new JavaFloat);
+                return processor.convert(new JavaTypeInteger, new JavaTypeFloat);
             case 133 /* i2l */:
-                return processor.convert(new JavaInteger, new JavaLong);
+                return processor.convert(new JavaTypeInteger, new JavaTypeLong);
             case 147 /* i2s */:
-                return processor.convert(new JavaInteger, new JavaShort);
+                return processor.convert(new JavaTypeInteger, new JavaTypeShort);
             case 138 /* l2d */:
-                return processor.convert(new JavaLong, new JavaDouble);
+                return processor.convert(new JavaTypeLong, new JavaTypeDouble);
             case 137 /* l2f */:
-                return processor.convert(new JavaLong, new JavaFloat);
+                return processor.convert(new JavaTypeLong, new JavaTypeFloat);
             case 136 /* l2i */:
-                return processor.convert(new JavaLong, new JavaInteger);
+                return processor.convert(new JavaTypeLong, new JavaTypeInteger);
 
             case 153 /* ifeq */:
                 return processor.ifcond('==', param);
@@ -1288,14 +1536,14 @@ var Dynarec0 = (function () {
     };
 
     Dynarec0.prototype._load = function (type, index) {
-        if (type instanceof JavaRef) {
+        if (type instanceof JavaTypeRef) {
             this.writeSentence('stack.push(' + this.getref(index) + '); // aload');
         } else {
             this.writeSentence('stack.push(' + this.getref(index) + '.value); // _load');
         }
     };
     Dynarec0.prototype._return = function (type) {
-        if (type instanceof JavaVoid) {
+        if (type instanceof JavaTypeVoid) {
             this.writeSentence('return;');
         } else {
             this.writeSentence('return stack.pop(); // _return');
@@ -1306,11 +1554,11 @@ var Dynarec0 = (function () {
         var className = methodInfo.className(this.pool);
         var name = methodInfo.name(this.pool);
         var type = methodInfo.type(this.pool);
-        var demangledType = JavaMethodType.demangle(methodInfo.type(this.pool));
+        var demangledType = JavaTypeMethod.demangle(methodInfo.type(this.pool));
         var argCount = demangledType.arguments.length;
 
         //if (invoketype == 'static') argCount++;
-        if (demangledType.rettype instanceof JavaVoid) {
+        if (demangledType.rettype instanceof JavaTypeVoid) {
             this.call(name, argCount);
         } else {
             this.call_void(name, argCount);
@@ -1339,7 +1587,7 @@ var Dynarec0 = (function () {
         this.writeSentence('stack.push(getstatic(' + methodInfo.name(this.pool) + ')); // getstatic');
     };
     Dynarec0.prototype._binop = function (type, op) {
-        if (type instanceof JavaInteger) {
+        if (type instanceof JavaTypeInteger) {
             this.writeSentence('var r = stack.pop(), l = stack.pop(); stack.push(l ' + op + ' r); // ibinop(' + op + ')');
         } else {
             this.writeSentence('var r = stack.pop(), l = stack.pop(); stack.push(Long["' + op + '"](l, r)); // lbinop(' + op + ')');
@@ -1392,11 +1640,12 @@ var Dynarec1 = (function () {
 
     Dynarec1.prototype.process = function (instructions) {
         var _this = this;
-        console.log('-----------------------------', this.methodName);
+        //console.log('-----------------------------', this.methodName);
         instructions.forEach(function (i) {
             _this.processOne(i);
         });
-        console.log('///////////////////////////// ', this.stack.length);
+
+        //console.log('///////////////////////////// ', this.stack.length);
         if (this.stack.length)
             console.warn('stack length not zero at the end of the function! Probably a bug!');
     };
@@ -1415,7 +1664,7 @@ var Dynarec1 = (function () {
     };
 
     Dynarec1.prototype._load = function (type, index) {
-        if (type instanceof JavaRef) {
+        if (type instanceof JavaTypeRef) {
             this.stack.push(this.getref(index));
         } else {
             this.stack.push(new NodeCast(type, this.getref(index)));
@@ -1428,7 +1677,7 @@ var Dynarec1 = (function () {
     };
 
     Dynarec1.prototype._return = function (type) {
-        if (type instanceof JavaVoid) {
+        if (type instanceof JavaTypeVoid) {
             this.writeSentence('return;');
         } else {
             this.writeSentence('return ' + this.stack.pop().toString() + ';');
@@ -1460,7 +1709,7 @@ var Dynarec1 = (function () {
         var className = methodInfo.className(this.pool);
         var name = methodInfo.name(this.pool);
         var type = methodInfo.type(this.pool);
-        var demangledType = JavaMethodType.demangle(methodInfo.type(this.pool));
+        var demangledType = JavaTypeMethod.demangle(methodInfo.type(this.pool));
         var argCount = demangledType.arguments.length;
         var args = [];
 
@@ -1470,7 +1719,7 @@ var Dynarec1 = (function () {
 
         var call = new NodeCall(name, args);
 
-        if (demangledType.rettype instanceof JavaVoid) {
+        if (demangledType.rettype instanceof JavaTypeVoid) {
             this.writeSentence(call.toString() + ";");
         } else {
             this.stack.push(call);
@@ -1567,8 +1816,7 @@ var JavaClass = (function () {
                 index++;
         }
 
-        this.constantPool.dump();
-
+        //this.constantPool.dump();
         var access_flags = stream.readUInt16BE();
         var this_class = stream.readUInt16BE();
         var super_class = stream.readUInt16BE();
@@ -1590,13 +1838,12 @@ var JavaClass = (function () {
             this.methods.push(new JavaMethod(this.constantPool, this.readMethodInfo(stream)));
         for (var n = 0, count = stream.readUInt16BE(); n < count; n++)
             attributes.push(this.readAttributeInfo(stream));
-
-        console.log(magic);
-        console.log(minor_version);
-        console.log(major_version, JavaClass.majorVersionMap[major_version]);
-        console.log(contant_pool_count);
-        console.log(interfaces);
-        console.log(fields);
+        //console.log(magic);
+        //console.log(minor_version);
+        //console.log(major_version, JavaClass.majorVersionMap[major_version]);
+        //console.log(contant_pool_count);
+        //console.log(interfaces);
+        //console.log(fields);
         //console.log(methods);
         //console.log(attributes);
     };
