@@ -7,6 +7,10 @@ var __extends = this.__extends || function (d, b) {
 };
 var fs = require('fs');
 
+function range(count) {
+    return Array.apply(null, { length: count }).map(Number.call, Number);
+}
+
 var Stream = (function () {
     function Stream(buffer) {
         this.buffer = buffer;
@@ -60,6 +64,17 @@ var Stream = (function () {
     };
     return Stream;
 })();
+
+var Convert = (function () {
+    function Convert() {
+    }
+    Convert.i2c = function (value) {
+        return value & 0xFFFF;
+    };
+    return Convert;
+})();
+
+global['Convert'] = Convert;
 
 // http://en.wikipedia.org/wiki/Java_bytecode_instruction_listings
 var Opcode;
@@ -585,7 +600,10 @@ var JavaMethod = (function () {
                 while (!code.eof) {
                     instructions.push(InstructionReader.read(code));
                 }
-                console.log(Dynarec.getFunctionCode(_this.pool, methodType, max_stack, max_locals, ((_this.info.access_flags & 8 /* STATIC */) != 0), instructions));
+
+                var info = Dynarec.getFunctionCode(_this.pool, _this.name, methodType, max_stack, max_locals, ((_this.info.access_flags & 8 /* STATIC */) != 0), instructions);
+                _this.func = info.func;
+                _this.body = info.body;
             }
         });
     };
@@ -689,7 +707,7 @@ var NodeBinop = (function (_super) {
         this.right = right;
     }
     NodeBinop.prototype.toString = function () {
-        return this.left.toString() + ' ' + this.op + ' ' + this.right.toString();
+        return '(' + this.left.toString() + ' ' + this.op + ' ' + this.right.toString() + ')';
     };
     return NodeBinop;
 })(Node);
@@ -899,25 +917,29 @@ var JavaMethodType = (function (_super) {
 })(JavaType);
 
 var Dynarec = (function () {
-    function Dynarec(pool, methodType, max_stack, max_locals, is_static) {
+    function Dynarec(pool, methodName, methodType, max_stack, max_locals, is_static) {
         this.pool = pool;
+        this.methodName = methodName;
         this.methodType = methodType;
         this.max_stack = max_stack;
         this.max_locals = max_locals;
         this.is_static = is_static;
         this.stack = [];
-        this.body = "";
+        this.body = '"use strict";\n';
     }
-    Dynarec.getFunctionCode = function (pool, methodType, max_stack, max_locals, is_static, instructions) {
-        var dynarec = new Dynarec(pool, methodType, max_stack, max_locals, is_static);
+    Dynarec.getFunctionCode = function (pool, methodName, methodType, max_stack, max_locals, is_static, instructions) {
+        var dynarec = new Dynarec(pool, methodName, methodType, max_stack, max_locals, is_static);
         dynarec.process(instructions);
-        var out = '';
-        out += 'function(' + (new Array(methodType.arguments.length)).map(function (index) {
-            return 'arg' + index;
-        }).join(', ') + ') {\n';
-        out += dynarec.body;
-        out += '}\n';
-        return out;
+        var func;
+        try  {
+            func = Function.apply(null, range(methodType.arguments.length).map(function (index) {
+                return 'arg' + index;
+            }).concat([dynarec.body]));
+        } catch (e) {
+            console.error(e);
+            func = null;
+        }
+        return { func: func, body: dynarec.body };
     };
 
     Dynarec.prototype.writeSentence = function (text) {
@@ -926,7 +948,7 @@ var Dynarec = (function () {
 
     Dynarec.prototype.process = function (instructions) {
         var _this = this;
-        console.log('-----------------------------');
+        console.log('-----------------------------', this.methodName);
         instructions.forEach(function (i) {
             _this.processOne(i);
         });
@@ -1114,6 +1136,7 @@ var Dynarec = (function () {
         var demangledType = JavaMethodType.demangle(this.pool.getMethodType(index));
         var argCount = demangledType.arguments.length;
         var args = [];
+
         for (var n = 0; n < argCount; n++) {
             args.push(this.stack.pop());
         }
@@ -1136,11 +1159,6 @@ var Dynarec = (function () {
     };
 
     Dynarec.prototype.getref = function (index) {
-        if (!this.is_static) {
-            if (index == 0)
-                return new NodeRef('this');
-            index--;
-        }
         var argLength = this.methodType.arguments.length;
         if (index < argLength) {
             return new NodeRef('arg' + (index) + '');
@@ -1238,7 +1256,14 @@ var Dynarec = (function () {
 
 var JavaClass = (function () {
     function JavaClass() {
+        this.methods = [];
     }
+    JavaClass.fromStream = function (stream) {
+        var javaClass = new JavaClass();
+        javaClass.readData(stream);
+        return javaClass;
+    };
+
     JavaClass.prototype.readData = function (stream) {
         var magic = stream.readUInt32BE();
         if (magic != 3405691582)
@@ -1268,7 +1293,6 @@ var JavaClass = (function () {
         */
         var interfaces = [];
         var fields = [];
-        var methods = [];
         var attributes = [];
 
         for (var n = 0, count = stream.readUInt16BE(); n < count; n++)
@@ -1276,7 +1300,7 @@ var JavaClass = (function () {
         for (var n = 0, count = stream.readUInt16BE(); n < count; n++)
             fields.push(this.readFieldInfo(stream));
         for (var n = 0, count = stream.readUInt16BE(); n < count; n++)
-            methods.push(new JavaMethod(this.constantPool, this.readMethodInfo(stream)));
+            this.methods.push(new JavaMethod(this.constantPool, this.readMethodInfo(stream)));
         for (var n = 0, count = stream.readUInt16BE(); n < count; n++)
             attributes.push(this.readAttributeInfo(stream));
 
@@ -1286,12 +1310,18 @@ var JavaClass = (function () {
         console.log(contant_pool_count);
         console.log(interfaces);
         console.log(fields);
-
         //console.log(methods);
         //console.log(attributes);
-        methods.forEach(function (method) {
-            //console.log(method);
-        });
+    };
+
+    JavaClass.prototype.getMethod = function (name, type) {
+        if (typeof type === "undefined") { type = ''; }
+        for (var n = 0; n < this.methods.length; n++) {
+            var method = this.methods[n];
+            if (method.name == name)
+                return method;
+        }
+        return null;
     };
 
     JavaClass.readConstantPoolInfo = function (pool, stream) {
@@ -1346,7 +1376,14 @@ var JavaClass = (function () {
     JavaClass.majorVersionMap = { 45: 'JDK 1.1', 46: 'JDK 1.2', 47: 'JDK 1.3', 48: 'JDK 1.4', 49: 'J2SE 5.0', 50: 'J2SE 6.0', 51: 'J2SE 7', 52: 'J2SE 8' };
     return JavaClass;
 })();
-
-var javaClass = new JavaClass();
-
-javaClass.readData(new Stream(fs.readFileSync(__dirname + '/test/Bits.class')));
+var BitsClass = JavaClass.fromStream(new Stream(fs.readFileSync(__dirname + '/test/Bits.class')));
+console.log('----------');
+var getChar = BitsClass.getMethod('getChar').func;
+var array = new Uint8Array([1, 2, 3]);
+var v = 0;
+var start = Date.now();
+for (var n = 0; n < 10000000; n++) {
+    v += getChar(array, 0);
+}
+console.log(Date.now() - start);
+//# sourceMappingURL=main.js.map

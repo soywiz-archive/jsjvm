@@ -2,6 +2,8 @@
 
 import fs = require('fs');
 
+function range(count: number): number[] { return Array.apply(null, { length: count }).map(Number.call, Number); }
+
 class Stream {
 	position = 0;
 	constructor(private buffer: NodeBuffer) { }
@@ -17,6 +19,12 @@ class Stream {
 	readUInt8() { return this._move(this.buffer.readUInt8(this.position), 1); }
 	readBytes(count: number) { return this._move(this.buffer.slice(this.position, this.position + count), count); }
 }
+
+class Convert {
+	static i2c(value: number) { return value & 0xFFFF; }
+}
+
+global['Convert'] = Convert;
 
 // http://en.wikipedia.org/wiki/Java_bytecode_instruction_listings
 enum Opcode {
@@ -148,6 +156,8 @@ class InstructionReader {
 class JavaMethod {
 	public name: string;
 	public methodTypeStr: string;
+	public func: Function;
+	public body: string;
 
 	constructor(private pool: ConstantPool, public info: JavaMemberInfo) {
 		this.name = pool.getString(info.name_index);
@@ -174,7 +184,10 @@ class JavaMethod {
 				while (!code.eof) {
 					instructions.push(InstructionReader.read(code));
 				}
-				console.log(Dynarec.getFunctionCode(this.pool, methodType, max_stack, max_locals, ((this.info.access_flags & ACC_MEMBER.STATIC) != 0), instructions));
+
+				var info = Dynarec.getFunctionCode(this.pool, this.name, methodType, max_stack, max_locals, ((this.info.access_flags & ACC_MEMBER.STATIC) != 0), instructions);
+				this.func = info.func;
+				this.body = info.body;
 			}
 		});
 	}
@@ -203,7 +216,7 @@ class NodeCastFloat extends Node { constructor(public node: Node) { super(); } t
 
 class NodeBinop extends Node {
 	constructor(public left: Node, public op: string, public right: Node) { super(); }
-	toString() { return this.left.toString() + ' ' + this.op + ' ' + this.right.toString(); }
+	toString() { return '(' + this.left.toString() + ' ' + this.op + ' ' + this.right.toString() + ')'; }
 }
 
 class NodeCall extends Node {
@@ -282,28 +295,31 @@ class JavaMethodType extends JavaType {
 }
 
 class Dynarec {
-	constructor(private pool: ConstantPool, private methodType: JavaMethodType, private max_stack: number, private max_locals: number, private is_static: boolean) {
+	constructor(private pool: ConstantPool, private methodName:string, private methodType: JavaMethodType, private max_stack: number, private max_locals: number, private is_static: boolean) {
 	}
 
-	static getFunctionCode(pool: ConstantPool, methodType: JavaMethodType, max_stack: number, max_locals: number, is_static: boolean, instructions: Instruction[]) {
-		var dynarec = new Dynarec(pool, methodType, max_stack, max_locals, is_static);
+	static getFunctionCode(pool: ConstantPool, methodName: string, methodType: JavaMethodType, max_stack: number, max_locals: number, is_static: boolean, instructions: Instruction[]) {
+		var dynarec = new Dynarec(pool, methodName, methodType, max_stack, max_locals, is_static);
 		dynarec.process(instructions);
-		var out = '';
-		out += 'function(' + (new Array(methodType.arguments.length)).map(index => 'arg' + index).join(', ') + ') {\n';
-		out += dynarec.body;
-		out += '}\n';
-		return out;
+		var func;
+		try {
+			func = Function.apply(null, range(methodType.arguments.length).map(index => 'arg' + index).concat([dynarec.body]));
+		} catch (e) {
+			console.error(e);
+			func = null;
+		}
+		return { func: func, body: dynarec.body };
 	}
 
 	stack = <Node[]>[];
-	body = "";
+	body = '"use strict";\n';
 
 	writeSentence(text: string) {
 		this.body += text + "\n";
 	}
 
 	process(instructions: Instruction[]) {
-		console.log('-----------------------------');
+		console.log('-----------------------------', this.methodName);
 		instructions.forEach(i => {
 			this.processOne(i);
 		});
@@ -400,6 +416,9 @@ class Dynarec {
 		var demangledType = JavaMethodType.demangle(this.pool.getMethodType(index));
 		var argCount = demangledType.arguments.length;
 		var args = <Node[]>[];
+
+		//if (invoketype == 'static') argCount++;
+
 		for (var n = 0; n < argCount; n++) {
 			args.push(this.stack.pop());
 		}
@@ -422,10 +441,6 @@ class Dynarec {
 	}
 
 	private getref(index: number) {
-		if (!this.is_static) {
-			if (index == 0) return new NodeRef('this');
-			index--;
-		}
 		var argLength = this.methodType.arguments.length;
 		if (index < argLength) {
 			return new NodeRef('arg' + (index) + '');
@@ -488,6 +503,13 @@ class JavaClass {
 	static majorVersionMap = { 45: 'JDK 1.1', 46: 'JDK 1.2', 47: 'JDK 1.3', 48: 'JDK 1.4', 49: 'J2SE 5.0', 50: 'J2SE 6.0', 51: 'J2SE 7', 52: 'J2SE 8' };
 
 	public constantPool:ConstantPool;
+	private methods = <JavaMethod[]>[];
+
+	static fromStream(stream: Stream) {
+		var javaClass = new JavaClass();
+		javaClass.readData(stream);
+		return javaClass;
+	}
 
 	readData(stream: Stream) {
 		var magic = stream.readUInt32BE();
@@ -517,12 +539,11 @@ class JavaClass {
 
 		var interfaces = <number[]>[];
 		var fields = <JavaMemberInfo[]>[];
-		var methods = <JavaMethod[]>[];
 		var attributes = <JavaAttributeInfo[]>[];
 
 		for (var n = 0, count = stream.readUInt16BE(); n < count; n++) interfaces.push(stream.readUInt16BE());
 		for (var n = 0, count = stream.readUInt16BE(); n < count; n++) fields.push(this.readFieldInfo(stream));
-		for (var n = 0, count = stream.readUInt16BE(); n < count; n++) methods.push(new JavaMethod(this.constantPool, this.readMethodInfo(stream)));
+		for (var n = 0, count = stream.readUInt16BE(); n < count; n++) this.methods.push(new JavaMethod(this.constantPool, this.readMethodInfo(stream)));
 		for (var n = 0, count = stream.readUInt16BE(); n < count; n++) attributes.push(this.readAttributeInfo(stream));
 
 		console.log(magic);
@@ -533,10 +554,14 @@ class JavaClass {
 		console.log(fields);
 		//console.log(methods);
 		//console.log(attributes);
+	}
 
-		methods.forEach(method => {
-			//console.log(method);
-		});
+	getMethod(name: string, type: string = '') {
+		for (var n = 0; n < this.methods.length; n++) {
+			var method = this.methods[n];
+			if (method.name == name) return method;
+		}
+		return null;
 	}
 
 	private static readConstantPoolInfo(pool: ConstantPool, stream: Stream): any {
@@ -571,7 +596,13 @@ class JavaClass {
 	private readFieldInfo(stream: Stream) { return this._readMemberInfo(stream); }
 	private readAttributeInfo(stream: Stream) { return new JavaAttributeInfo(stream.readUInt16BE(), stream.readBytes(stream.readUInt32BE())); }
 }
-
-var javaClass = new JavaClass();
-
-javaClass.readData(new Stream(fs.readFileSync(__dirname + '/test/Bits.class')));
+var BitsClass = JavaClass.fromStream(new Stream(fs.readFileSync(__dirname + '/test/Bits.class')));
+console.log('----------');
+var getChar = BitsClass.getMethod('getChar').func;
+var array = new Uint8Array([1, 2, 3]);
+var v = 0;
+var start = Date.now();
+for (var n = 0; n < 10000000; n++) {
+	v += getChar(array, 0);
+}
+console.log(Date.now() - start);
