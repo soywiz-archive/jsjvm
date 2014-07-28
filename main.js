@@ -1,4 +1,10 @@
 ﻿/// <reference path="node.d.ts" />
+var __extends = this.__extends || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    __.prototype = b.prototype;
+    d.prototype = new __();
+};
 var fs = require('fs');
 
 var Stream = (function () {
@@ -55,6 +61,7 @@ var Stream = (function () {
     return Stream;
 })();
 
+// http://en.wikipedia.org/wiki/Java_bytecode_instruction_listings
 var Opcode;
 (function (Opcode) {
     Opcode[Opcode["nop"] = 0x00] = "nop";
@@ -274,28 +281,20 @@ var ACC_CLASS;
     ACC_CLASS[ACC_CLASS["INTERFACE"] = 0x0200] = "INTERFACE";
     ACC_CLASS[ACC_CLASS["ABSTRACT"] = 0x0400] = "ABSTRACT";
 })(ACC_CLASS || (ACC_CLASS = {}));
-var ACC_FIELD;
-(function (ACC_FIELD) {
-    ACC_FIELD[ACC_FIELD["PUBLIC"] = 0x0001] = "PUBLIC";
-    ACC_FIELD[ACC_FIELD["PRIVATE"] = 0x0002] = "PRIVATE";
-    ACC_FIELD[ACC_FIELD["PROTECTED"] = 0x0004] = "PROTECTED";
-    ACC_FIELD[ACC_FIELD["STATIC"] = 0x0008] = "STATIC";
-    ACC_FIELD[ACC_FIELD["FINAL"] = 0x0010] = "FINAL";
-    ACC_FIELD[ACC_FIELD["VOLATILE"] = 0x0040] = "VOLATILE";
-    ACC_FIELD[ACC_FIELD["TRANSIENT"] = 0x0080] = "TRANSIENT";
-})(ACC_FIELD || (ACC_FIELD = {}));
-var ACC_METHOD;
-(function (ACC_METHOD) {
-    ACC_METHOD[ACC_METHOD["PUBLIC"] = 0x0001] = "PUBLIC";
-    ACC_METHOD[ACC_METHOD["PRIVATE"] = 0x0002] = "PRIVATE";
-    ACC_METHOD[ACC_METHOD["PROTECTED"] = 0x0004] = "PROTECTED";
-    ACC_METHOD[ACC_METHOD["STATIC"] = 0x0008] = "STATIC";
-    ACC_METHOD[ACC_METHOD["FINAL"] = 0x0010] = "FINAL";
-    ACC_METHOD[ACC_METHOD["SYNCHRONIZED"] = 0x0020] = "SYNCHRONIZED";
-    ACC_METHOD[ACC_METHOD["NATIVE"] = 0x0100] = "NATIVE";
-    ACC_METHOD[ACC_METHOD["ABSTRACT"] = 0x0400] = "ABSTRACT";
-    ACC_METHOD[ACC_METHOD["STRICT"] = 0x0800] = "STRICT";
-})(ACC_METHOD || (ACC_METHOD = {}));
+var ACC_MEMBER;
+(function (ACC_MEMBER) {
+    ACC_MEMBER[ACC_MEMBER["PUBLIC"] = 0x0001] = "PUBLIC";
+    ACC_MEMBER[ACC_MEMBER["PRIVATE"] = 0x0002] = "PRIVATE";
+    ACC_MEMBER[ACC_MEMBER["PROTECTED"] = 0x0004] = "PROTECTED";
+    ACC_MEMBER[ACC_MEMBER["STATIC"] = 0x0008] = "STATIC";
+    ACC_MEMBER[ACC_MEMBER["FINAL"] = 0x0010] = "FINAL";
+    ACC_MEMBER[ACC_MEMBER["SYNCHRONIZED"] = 0x0020] = "SYNCHRONIZED";
+    ACC_MEMBER[ACC_MEMBER["VOLATILE"] = 0x0040] = "VOLATILE";
+    ACC_MEMBER[ACC_MEMBER["TRANSIENT"] = 0x0080] = "TRANSIENT";
+    ACC_MEMBER[ACC_MEMBER["NATIVE"] = 0x0100] = "NATIVE";
+    ACC_MEMBER[ACC_MEMBER["ABSTRACT"] = 0x0400] = "ABSTRACT";
+    ACC_MEMBER[ACC_MEMBER["STRICT"] = 0x0800] = "STRICT";
+})(ACC_MEMBER || (ACC_MEMBER = {}));
 var CONSTANT;
 (function (CONSTANT) {
     CONSTANT[CONSTANT["Utf8"] = 1] = "Utf8";
@@ -311,65 +310,133 @@ var CONSTANT;
     CONSTANT[CONSTANT["NameAndType"] = 12] = "NameAndType";
 })(CONSTANT || (CONSTANT = {}));
 
+var ConstantPool = (function () {
+    function ConstantPool() {
+        this.items = [];
+    }
+    ConstantPool.prototype.get = function (index) {
+        return this.items[index];
+    };
+    ConstantPool.prototype.getValue = function (index) {
+        return this.items[index].value;
+    };
+    ConstantPool.prototype.getString = function (index) {
+        return this.get(index).string;
+    };
+    ConstantPool.prototype.getClassName = function (index) {
+        return this.getString(this.get(index).indexName);
+    };
+
+    ConstantPool.prototype.getMethodName = function (index) {
+        var mr = this.getMethodReference(index);
+        var className = this.getString(this.get(mr.indexClassReference).indexName);
+        var methodName = this.getString(this.get(mr.indexNameType).indexName);
+        var typeName = this.getString(this.get(mr.indexNameType).indexType);
+        return className + '.' + methodName + typeName;
+    };
+
+    ConstantPool.prototype.getType = function (index) {
+        return this.items[index].constructor;
+    };
+    ConstantPool.prototype.getMethodReference = function (index) {
+        return this.get(index);
+    };
+    ConstantPool.prototype.getMethodType = function (index) {
+        return this.getMethodReference(index).type(this);
+    };
+    ConstantPool.prototype.dump = function () {
+        this.items.forEach(function (item, index) {
+            console.log(index, item.constructor, item);
+        });
+    };
+    return ConstantPool;
+})();
+
 var JavaConstantUtf8 = (function () {
-    function JavaConstantUtf8(data) {
+    function JavaConstantUtf8(pool, data) {
         this.string = "";
         this.string = data.toString('utf-8');
     }
     return JavaConstantUtf8;
 })();
-
 var JavaConstantInt = (function () {
-    function JavaConstantInt(value) {
+    function JavaConstantInt(pool, value) {
         this.value = value;
     }
     return JavaConstantInt;
 })();
 var JavaConstantLong = (function () {
-    function JavaConstantLong(low, high) {
+    function JavaConstantLong(pool, low, high) {
         this.low = low;
         this.high = high;
     }
     return JavaConstantLong;
 })();
+var JavaConstantDouble = (function () {
+    function JavaConstantDouble(pool, value) {
+        this.value = value;
+    }
+    return JavaConstantDouble;
+})();
 var JavaConstantClassReference = (function () {
-    function JavaConstantClassReference(index) {
-        this.index = index;
+    function JavaConstantClassReference(pool, indexName) {
+        this.indexName = indexName;
     }
     return JavaConstantClassReference;
 })();
 var JavaConstantStringReference = (function () {
-    function JavaConstantStringReference(index) {
+    function JavaConstantStringReference(pool, index) {
         this.index = index;
     }
     return JavaConstantStringReference;
 })();
 var JavaConstantFieldReference = (function () {
-    function JavaConstantFieldReference(index1, index2) {
+    function JavaConstantFieldReference(pool, index1, index2) {
         this.index1 = index1;
         this.index2 = index2;
     }
     return JavaConstantFieldReference;
 })();
 var JavaConstantMethodReference = (function () {
-    function JavaConstantMethodReference(index1, index2) {
-        this.index1 = index1;
-        this.index2 = index2;
+    function JavaConstantMethodReference(pool, indexClassReference, indexNameType) {
+        this.indexClassReference = indexClassReference;
+        this.indexNameType = indexNameType;
     }
+    JavaConstantMethodReference.prototype.classReference = function (pool) {
+        return pool.get(this.indexClassReference);
+    };
+    JavaConstantMethodReference.prototype.className = function (pool) {
+        return pool.getString(this.classReference(pool).indexName);
+    };
+    JavaConstantMethodReference.prototype.nameTypeDescriptor = function (pool) {
+        return pool.get(this.indexNameType);
+    };
+    JavaConstantMethodReference.prototype.name = function (pool) {
+        return this.nameTypeDescriptor(pool).name(pool);
+    };
+    JavaConstantMethodReference.prototype.type = function (pool) {
+        return this.nameTypeDescriptor(pool).type(pool);
+    };
     return JavaConstantMethodReference;
 })();
 var JavaConstantInterfaceMethodReference = (function () {
-    function JavaConstantInterfaceMethodReference(index1, index2) {
+    function JavaConstantInterfaceMethodReference(pool, index1, index2) {
         this.index1 = index1;
         this.index2 = index2;
     }
     return JavaConstantInterfaceMethodReference;
 })();
 var JavaConstantNameTypeDescriptor = (function () {
-    function JavaConstantNameTypeDescriptor(index1, index2) {
-        this.index1 = index1;
-        this.index2 = index2;
+    function JavaConstantNameTypeDescriptor(pool, indexName, indexType) {
+        this.indexName = indexName;
+        this.indexType = indexType;
     }
+    JavaConstantNameTypeDescriptor.prototype.name = function (pool) {
+        return pool.getString(this.indexName);
+    };
+    JavaConstantNameTypeDescriptor.prototype.type = function (pool) {
+        return pool.getString(this.indexType);
+    };
     return JavaConstantNameTypeDescriptor;
 })();
 
@@ -391,10 +458,21 @@ var JavaAttributeInfo = (function () {
     return JavaAttributeInfo;
 })();
 
-var OpcodeReader = (function () {
-    function OpcodeReader() {
+var Instruction = (function () {
+    function Instruction(offset, op, param) {
+        this.offset = offset;
+        this.op = op;
+        this.param = param;
+        this.name = Opcode[op];
     }
-    OpcodeReader.read = function (code) {
+    return Instruction;
+})();
+
+var InstructionReader = (function () {
+    function InstructionReader() {
+    }
+    InstructionReader.read = function (code) {
+        var offset = code.position;
         var op = code.readUInt8();
         switch (op) {
             case 170 /* tableswitch */:
@@ -402,9 +480,9 @@ var OpcodeReader = (function () {
             case 171 /* lookupswitch */:
                 throw (new Error("Not implemented lookupswitch"));
             case 16 /* bipush */:
-                return { op: op, name: Opcode[op], param: code.readUInt8() };
+                return new Instruction(offset, op, code.readUInt8());
             case 17 /* sipush */:
-                return { op: op, name: Opcode[op], param: code.readUInt16BE() };
+                return new Instruction(offset, op, code.readUInt16BE());
             case 21 /* iload */:
             case 22 /* lload */:
             case 23 /* fload */:
@@ -416,10 +494,10 @@ var OpcodeReader = (function () {
             case 57 /* dstore */:
             case 58 /* astore */:
             case 169 /* ret */:
-                return { op: op, name: Opcode[op], param: code.readUInt8() };
+                return new Instruction(offset, op, code.readUInt8());
 
             case 18 /* ldc */:
-                return { op: op, name: Opcode[op], param: code.readUInt8() };
+                return new Instruction(offset, op, code.readUInt8());
 
             case 19 /* ldc_w */:
             case 20 /* ldc2_w */:
@@ -434,7 +512,7 @@ var OpcodeReader = (function () {
             case 189 /* anewarray */:
             case 192 /* checkcast */:
             case 193 /* instanceof */:
-                return { op: op, name: Opcode[op], param: code.readUInt16BE() };
+                return new Instruction(offset, op, code.readUInt16BE());
 
             case 132 /* iinc */:
                 throw (new Error("Not implemented index_const_body"));
@@ -456,7 +534,7 @@ var OpcodeReader = (function () {
             case 168 /* jsr */:
             case 198 /* ifnull */:
             case 199 /* ifnonnull */:
-                return { op: op, name: Opcode[op], param: code.readInt16BE() };
+                return new Instruction(offset, op, code.readInt16BE());
 
             case 188 /* newarray */:
                 throw (new Error("Not implemented newarray"));
@@ -472,10 +550,10 @@ var OpcodeReader = (function () {
             case 201 /* jsr_w */:
                 throw (new Error("Not implemented branchbyte1_4_body"));
             default:
-                return { op: op, name: Opcode[op] };
+                return new Instruction(offset, op, null);
         }
     };
-    return OpcodeReader;
+    return InstructionReader;
 })();
 
 var JavaMethod = (function () {
@@ -483,12 +561,13 @@ var JavaMethod = (function () {
         this.pool = pool;
         this.info = info;
         this.name = pool.getString(info.name_index);
-        this.descriptor = pool.getString(info.descriptor_index);
+        this.methodTypeStr = pool.getString(info.descriptor_index);
         this.parse();
     }
     JavaMethod.prototype.parse = function () {
         var _this = this;
-        console.log('JavaMethod.parse() -> ', this.name, this.descriptor);
+        var methodType = JavaMethodType.demangle(this.methodTypeStr);
+        console.log('JavaMethod.parse() -> ', this.name, this.methodTypeStr, methodType.mangled);
         this.info.attributes.forEach(function (attribute) {
             var attribute_name = _this.pool.getString(attribute.index);
 
@@ -501,37 +580,659 @@ var JavaMethod = (function () {
                 var code_length = attr2.readInt32BE();
                 var code = new Stream(attr2.readBytes(code_length));
                 console.log('max_stack_locals', max_stack, max_locals);
+
+                var instructions = [];
                 while (!code.eof) {
-                    var op = OpcodeReader.read(code);
-                    console.log('op', op);
+                    instructions.push(InstructionReader.read(code));
                 }
+                console.log(Dynarec.getFunctionCode(_this.pool, methodType, max_stack, max_locals, ((_this.info.access_flags & 8 /* STATIC */) != 0), instructions));
             }
         });
     };
     return JavaMethod;
 })();
 
-var ConstantPool = (function () {
-    function ConstantPool() {
-        this.items = [];
+var Node = (function () {
+    function Node() {
     }
-    ConstantPool.prototype.get = function (index) {
-        return this.items[index];
+    Node.prototype.toString = function () {
+        return '';
     };
+    return Node;
+})();
+var NodeRef = (function (_super) {
+    __extends(NodeRef, _super);
+    function NodeRef(name) {
+        _super.call(this);
+        this.name = name;
+    }
+    NodeRef.prototype.toString = function () {
+        return this.name;
+    };
+    return NodeRef;
+})(Node);
+var NodeValue = (function (_super) {
+    __extends(NodeValue, _super);
+    function NodeValue(value) {
+        _super.call(this);
+        this.value = value;
+    }
+    NodeValue.prototype.toString = function () {
+        return String(this.value);
+    };
+    return NodeValue;
+})(Node);
+var NodeArrayAccess = (function (_super) {
+    __extends(NodeArrayAccess, _super);
+    function NodeArrayAccess(array, index) {
+        _super.call(this);
+        this.array = array;
+        this.index = index;
+    }
+    NodeArrayAccess.prototype.toString = function () {
+        return this.array.toString() + '[' + this.index.toString() + ']';
+    };
+    return NodeArrayAccess;
+})(Node);
 
-    ConstantPool.prototype.getString = function (index) {
-        return this.get(index).string;
+var NodeCastInt = (function (_super) {
+    __extends(NodeCastInt, _super);
+    function NodeCastInt(node) {
+        _super.call(this);
+        this.node = node;
+    }
+    NodeCastInt.prototype.toString = function () {
+        return '(' + this.node.toString() + '|0' + ')';
     };
+    return NodeCastInt;
+})(Node);
+var NodeCastLong = (function (_super) {
+    __extends(NodeCastLong, _super);
+    function NodeCastLong(node) {
+        _super.call(this);
+        this.node = node;
+    }
+    NodeCastLong.prototype.toString = function () {
+        return this.node.toString();
+    };
+    return NodeCastLong;
+})(Node);
+var NodeCastDouble = (function (_super) {
+    __extends(NodeCastDouble, _super);
+    function NodeCastDouble(node) {
+        _super.call(this);
+        this.node = node;
+    }
+    NodeCastDouble.prototype.toString = function () {
+        return this.node.toString();
+    };
+    return NodeCastDouble;
+})(Node);
+var NodeCastFloat = (function (_super) {
+    __extends(NodeCastFloat, _super);
+    function NodeCastFloat(node) {
+        _super.call(this);
+        this.node = node;
+    }
+    NodeCastFloat.prototype.toString = function () {
+        return this.node.toString();
+    };
+    return NodeCastFloat;
+})(Node);
 
-    ConstantPool.prototype.getClassName = function (index) {
-        return this.getString(this.get(index).index);
+var NodeBinop = (function (_super) {
+    __extends(NodeBinop, _super);
+    function NodeBinop(left, op, right) {
+        _super.call(this);
+        this.left = left;
+        this.op = op;
+        this.right = right;
+    }
+    NodeBinop.prototype.toString = function () {
+        return this.left.toString() + ' ' + this.op + ' ' + this.right.toString();
     };
-    return ConstantPool;
+    return NodeBinop;
+})(Node);
+
+var NodeCall = (function (_super) {
+    __extends(NodeCall, _super);
+    function NodeCall(methodName, args) {
+        _super.call(this);
+        this.methodName = methodName;
+        this.args = args;
+    }
+    NodeCall.prototype.toString = function () {
+        return this.methodName + '(' + this.args.map(function (arg) {
+            return arg.toString();
+        }).join(', ') + ')';
+    };
+    return NodeCall;
+})(Node);
+
+var StringReader = (function () {
+    function StringReader(reference) {
+        this.reference = reference;
+        this.offset = 0;
+    }
+    Object.defineProperty(StringReader.prototype, "length", {
+        get: function () {
+            return this.reference.length;
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(StringReader.prototype, "available", {
+        get: function () {
+            return this.length - this.offset;
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(StringReader.prototype, "eof", {
+        get: function () {
+            return this.available <= 0;
+        },
+        enumerable: true,
+        configurable: true
+    });
+    StringReader.prototype.read = function () {
+        return this.reference.charAt(this.offset++);
+    };
+    return StringReader;
 })();
 
-var Dynarec = (function () {
-    function Dynarec() {
+var JavaType = (function () {
+    function JavaType() {
+        this.mangled = "";
     }
+    JavaType.demangle = function (data) {
+        return JavaType._demangle(new StringReader(data));
+    };
+
+    JavaType._demangle = function (data) {
+        var type = data.read();
+        switch (type) {
+            case 'V':
+                return new JavaVoid();
+            case 'I':
+                return new JavaInteger();
+            case 'J':
+                return new JavaLong();
+            case 'F':
+                return new JavaFloat();
+            case 'B':
+                return new JavaByte();
+            case 'Z':
+                return new JavaBoolean();
+            case 'S':
+                return new JavaShort();
+            case 'C':
+                return new JavaCharacter();
+            case 'D':
+                return new JavaDouble();
+            case 'F':
+                return new JavaFloat();
+            case '[':
+                return new JavaArray(JavaType._demangle(data));
+            case ')':
+                return null;
+
+            default:
+                throw (new Error("Unknown type " + type));
+        }
+    };
+    return JavaType;
+})();
+
+var JavaVoid = (function (_super) {
+    __extends(JavaVoid, _super);
+    function JavaVoid() {
+        _super.apply(this, arguments);
+        this.mangled = "V";
+    }
+    return JavaVoid;
+})(JavaType);
+var JavaBoolean = (function (_super) {
+    __extends(JavaBoolean, _super);
+    function JavaBoolean() {
+        _super.apply(this, arguments);
+        this.mangled = "Z";
+    }
+    return JavaBoolean;
+})(JavaType);
+var JavaByte = (function (_super) {
+    __extends(JavaByte, _super);
+    function JavaByte() {
+        _super.apply(this, arguments);
+        this.mangled = "B";
+    }
+    return JavaByte;
+})(JavaType);
+var JavaShort = (function (_super) {
+    __extends(JavaShort, _super);
+    function JavaShort() {
+        _super.apply(this, arguments);
+        this.mangled = "S";
+    }
+    return JavaShort;
+})(JavaType);
+var JavaCharacter = (function (_super) {
+    __extends(JavaCharacter, _super);
+    function JavaCharacter() {
+        _super.apply(this, arguments);
+        this.mangled = "C";
+        this.boxed_name = 'Ljava/lang/Character;';
+    }
+    return JavaCharacter;
+})(JavaType);
+var JavaInteger = (function (_super) {
+    __extends(JavaInteger, _super);
+    function JavaInteger() {
+        _super.apply(this, arguments);
+        this.mangled = "I";
+    }
+    return JavaInteger;
+})(JavaType);
+var JavaFloat = (function (_super) {
+    __extends(JavaFloat, _super);
+    function JavaFloat() {
+        _super.apply(this, arguments);
+        this.mangled = "F";
+    }
+    return JavaFloat;
+})(JavaType);
+var JavaDouble = (function (_super) {
+    __extends(JavaDouble, _super);
+    function JavaDouble() {
+        _super.apply(this, arguments);
+        this.mangled = "D";
+    }
+    return JavaDouble;
+})(JavaType);
+var JavaLong = (function (_super) {
+    __extends(JavaLong, _super);
+    function JavaLong() {
+        _super.apply(this, arguments);
+        this.mangled = "J";
+    }
+    return JavaLong;
+})(JavaType);
+var JavaArray = (function (_super) {
+    __extends(JavaArray, _super);
+    function JavaArray(type) {
+        _super.call(this);
+        this.type = type;
+        this.mangled = '[' + type.mangled;
+    }
+    return JavaArray;
+})(JavaType);
+
+var JavaMethodType = (function (_super) {
+    __extends(JavaMethodType, _super);
+    function JavaMethodType() {
+        _super.apply(this, arguments);
+        this.arguments = [];
+        this.mangled = "";
+    }
+    JavaMethodType.demangle = function (data) {
+        return JavaMethodType._demangle(new StringReader(data));
+    };
+    JavaMethodType._demangle = function (str) {
+        var methodType = new JavaMethodType();
+        if (str.read() != '(')
+            throw (new Error("Not a method type"));
+        while (!str.eof) {
+            var type = JavaType._demangle(str);
+            if (type === null)
+                break;
+            methodType.arguments.push(type);
+        }
+        methodType.rettype = JavaType._demangle(str);
+        methodType.mangled = '(' + methodType.arguments.map(function (arg) {
+            return arg.mangled;
+        }).join('') + ')' + methodType.rettype.mangled;
+        if (!str.eof)
+            throw (new Error("Not loaded the entire string"));
+        return methodType;
+    };
+    return JavaMethodType;
+})(JavaType);
+
+var Dynarec = (function () {
+    function Dynarec(pool, methodType, max_stack, max_locals, is_static) {
+        this.pool = pool;
+        this.methodType = methodType;
+        this.max_stack = max_stack;
+        this.max_locals = max_locals;
+        this.is_static = is_static;
+        this.stack = [];
+        this.body = "";
+    }
+    Dynarec.getFunctionCode = function (pool, methodType, max_stack, max_locals, is_static, instructions) {
+        var dynarec = new Dynarec(pool, methodType, max_stack, max_locals, is_static);
+        dynarec.process(instructions);
+        var out = '';
+        out += 'function(' + (new Array(methodType.arguments.length)).map(function (index) {
+            return 'arg' + index;
+        }).join(', ') + ') {\n';
+        out += dynarec.body;
+        out += '}\n';
+        return out;
+    };
+
+    Dynarec.prototype.writeSentence = function (text) {
+        this.body += text + "\n";
+    };
+
+    Dynarec.prototype.process = function (instructions) {
+        var _this = this;
+        console.log('-----------------------------');
+        instructions.forEach(function (i) {
+            _this.processOne(i);
+        });
+        console.log('///////////////////////////// ', this.stack.length);
+        if (this.stack.length)
+            console.warn('stack length not zero at the end of the function! Probably a bug!');
+    };
+
+    Dynarec.prototype.processOne = function (i) {
+        var op = i.op, param = i.param;
+
+        switch (op) {
+            case 42 /* aload_0 */:
+            case 43 /* aload_1 */:
+            case 44 /* aload_2 */:
+            case 45 /* aload_3 */:
+                return this.aload(op - 42 /* aload_0 */);
+            case 26 /* iload_0 */:
+            case 27 /* iload_1 */:
+            case 28 /* iload_2 */:
+            case 29 /* iload_3 */:
+                return this.iload(op - 26 /* iload_0 */);
+            case 30 /* lload_0 */:
+            case 31 /* lload_1 */:
+            case 32 /* lload_2 */:
+            case 33 /* lload_3 */:
+                return this.lload(op - 30 /* lload_0 */);
+            case 34 /* fload_0 */:
+            case 35 /* fload_1 */:
+            case 36 /* fload_2 */:
+            case 37 /* fload_3 */:
+                return this.fload(op - 34 /* fload_0 */);
+            case 38 /* dload_0 */:
+            case 39 /* dload_1 */:
+            case 40 /* dload_2 */:
+            case 41 /* dload_3 */:
+                return this.dload(op - 38 /* dload_0 */);
+
+            case 25 /* aload */:
+                return this.aload(param);
+            case 21 /* iload */:
+                return this.iload(param);
+            case 22 /* lload */:
+                return this.lload(param);
+            case 23 /* fload */:
+                return this.fload(param);
+            case 24 /* dload */:
+                return this.dload(param);
+
+            case 75 /* astore_0 */:
+            case 76 /* astore_1 */:
+            case 77 /* astore_2 */:
+            case 78 /* astore_3 */:
+                return this.astore(op - 75 /* astore_0 */);
+            case 59 /* istore_0 */:
+            case 60 /* istore_1 */:
+            case 61 /* istore_2 */:
+            case 62 /* istore_3 */:
+                return this.istore(op - 59 /* istore_0 */);
+            case 63 /* lstore_0 */:
+            case 64 /* lstore_1 */:
+            case 65 /* lstore_2 */:
+            case 66 /* lstore_3 */:
+                return this.lstore(op - 63 /* lstore_0 */);
+            case 67 /* fstore_0 */:
+            case 68 /* fstore_1 */:
+            case 69 /* fstore_2 */:
+            case 70 /* fstore_3 */:
+                return this.fstore(op - 67 /* fstore_0 */);
+            case 71 /* dstore_0 */:
+            case 72 /* dstore_1 */:
+            case 73 /* dstore_2 */:
+            case 74 /* dstore_3 */:
+                return this.dstore(op - 71 /* dstore_0 */);
+
+            case 58 /* astore */:
+                return this.astore(param);
+            case 54 /* istore */:
+                return this.istore(param);
+            case 55 /* lstore */:
+                return this.lstore(param);
+            case 56 /* fstore */:
+                return this.fstore(param);
+            case 57 /* dstore */:
+                return this.dstore(param);
+
+            case 2 /* iconst_m1 */:
+            case 3 /* iconst_0 */:
+            case 4 /* iconst_1 */:
+            case 5 /* iconst_2 */:
+            case 6 /* iconst_3 */:
+            case 7 /* iconst_4 */:
+            case 8 /* iconst_5 */:
+                return this.iconst(op - 3 /* iconst_0 */);
+
+            case 20 /* ldc2_w */:
+                return this.ldc2_w(param);
+
+            case 183 /* invokespecial */:
+                return this.invokespecial(param);
+            case 184 /* invokestatic */:
+                return this.invokestatic(param);
+            case 177 /* Return */:
+                return this.Return();
+            case 172 /* ireturn */:
+                return this.ireturn();
+            case 174 /* freturn */:
+                return this.freturn();
+            case 175 /* dreturn */:
+                return this.dreturn();
+            case 173 /* lreturn */:
+                return this.lreturn();
+
+            case 96 /* iadd */:
+                return this.ibinop('+');
+            case 126 /* iand */:
+                return this.ibinop('&');
+            case 120 /* ishl */:
+                return this.ibinop('<<');
+            case 122 /* ishr */:
+                return this.ibinop('>>');
+            case 124 /* iushr */:
+                return this.ibinop('>>>');
+
+            case 97 /* ladd */:
+                return this.call('Long.add', 2);
+            case 127 /* land */:
+                return this.call('Long.and', 2);
+            case 121 /* lshl */:
+                return this.call('Long.shl', 2);
+            case 123 /* lshr */:
+                return this.call('Long.shr', 2);
+            case 125 /* lushr */:
+                return this.call('Long.ushr', 2);
+
+            case 17 /* sipush */:
+                return this.iconst(param);
+            case 16 /* bipush */:
+                return this.iconst(param);
+
+            case 145 /* i2b */:
+            case 146 /* i2c */:
+            case 135 /* i2d */:
+            case 134 /* i2f */:
+            case 133 /* i2l */:
+            case 147 /* i2s */:
+            case 138 /* l2d */:
+            case 137 /* l2f */:
+            case 136 /* l2i */:
+                return this.call('Convert.' + Opcode[op], 1);
+
+            case 51 /* baload */:
+                return this.baload();
+            case 84 /* bastore */:
+                return this.bastore();
+
+            case 153 /* ifeq */:
+                return this.ifcond('==', param);
+            case 167 /* goto */:
+                return this.goto(param);
+
+            default:
+                throw (new Error("Not implemented opcode " + i.name + "!"));
+        }
+    };
+
+    Dynarec.prototype.call = function (method, count) {
+        var args = [];
+        for (var n = 0; n < count; n++)
+            args.push(this.stack.pop());
+        this.stack.push(new NodeCall(method, args.reverse()));
+    };
+
+    Dynarec.prototype.ibinop = function (op) {
+        var right = this.stack.pop();
+        var left = this.stack.pop();
+        this.stack.push(new NodeBinop(left, op, right));
+    };
+
+    Dynarec.prototype._invoke = function (invoketype, index) {
+        var methodInfo = this.pool.getMethodReference(index);
+        var className = methodInfo.className(this.pool);
+        var name = methodInfo.name(this.pool);
+        var type = methodInfo.type(this.pool);
+        var demangledType = JavaMethodType.demangle(this.pool.getMethodType(index));
+        var argCount = demangledType.arguments.length;
+        var args = [];
+        for (var n = 0; n < argCount; n++) {
+            args.push(this.stack.pop());
+        }
+
+        var call = new NodeCall(name, args);
+
+        if (demangledType.rettype instanceof JavaVoid) {
+            this.writeSentence(call.toString() + ";");
+        } else {
+            this.stack.push(call);
+        }
+    };
+
+    Dynarec.prototype.invokespecial = function (index) {
+        this._invoke('special', index);
+    };
+
+    Dynarec.prototype.invokestatic = function (index) {
+        this._invoke('static', index);
+    };
+
+    Dynarec.prototype.getref = function (index) {
+        if (!this.is_static) {
+            if (index == 0)
+                return new NodeRef('this');
+            index--;
+        }
+        var argLength = this.methodType.arguments.length;
+        if (index < argLength) {
+            return new NodeRef('arg' + (index) + '');
+        } else {
+            return new NodeRef('local_' + (index - argLength));
+        }
+    };
+
+    Dynarec.prototype.aload = function (index) {
+        this.stack.push(this.getref(index));
+    };
+
+    Dynarec.prototype.iload = function (index) {
+        this.stack.push(new NodeCastInt(this.getref(index)));
+    };
+    Dynarec.prototype.lload = function (index) {
+        this.stack.push(new NodeCastLong(this.getref(index)));
+    };
+    Dynarec.prototype.fload = function (index) {
+        this.stack.push(new NodeCastFloat(this.getref(index)));
+    };
+    Dynarec.prototype.dload = function (index) {
+        this.stack.push(new NodeCastDouble(this.getref(index)));
+    };
+    Dynarec.prototype.astore = function (index) {
+        var ref = this.stack.pop();
+        console.log(this.getref(index).name, '=', ref.toString(), ';');
+    };
+    Dynarec.prototype.istore = function (index) {
+        var ref = this.stack.pop();
+        console.log(this.getref(index).name, '=', ref.toString(), ';');
+    };
+    Dynarec.prototype.lstore = function (index) {
+        var ref = this.stack.pop();
+        console.log(this.getref(index).name, '=', ref.toString(), ';');
+    };
+    Dynarec.prototype.fstore = function (index) {
+        var ref = this.stack.pop();
+        console.log(this.getref(index).name, '=', ref.toString(), ';');
+    };
+    Dynarec.prototype.dstore = function (index) {
+        var ref = this.stack.pop();
+        console.log(this.getref(index).name, '=', ref.toString(), ';');
+    };
+
+    Dynarec.prototype.iconst = function (value) {
+        this.stack.push(new NodeValue(value));
+    };
+    Dynarec.prototype.ldc2_w = function (index) {
+        this.stack.push(new NodeValue(this.pool.getValue(index)));
+    };
+
+    Dynarec.prototype.ifcond = function (cond, offset) {
+        var a1 = this.stack.pop();
+
+        //var a2 = this.stack.pop();
+        console.log('if', '(', a1.toString(), cond, 0, ')', 'goto', offset, ';');
+    };
+
+    Dynarec.prototype.goto = function (offset) {
+        this.writeSentence('goto L_' + offset + ';');
+    };
+
+    Dynarec.prototype.baload = function () {
+        var index = this.stack.pop();
+        var ref = this.stack.pop();
+        this.stack.push(new NodeArrayAccess(ref, index));
+    };
+
+    Dynarec.prototype.bastore = function () {
+        var value = this.stack.pop();
+        var index = this.stack.pop();
+        var ref = this.stack.pop();
+        this.writeSentence(ref.toString() + '[' + index.toString() + '] = ' + value.toString());
+    };
+
+    Dynarec.prototype.Return = function () {
+        this.writeSentence('return;');
+    };
+
+    Dynarec.prototype.ireturn = function () {
+        this.writeSentence('return ' + this.stack.pop().toString() + ';');
+    };
+    Dynarec.prototype.freturn = function () {
+        this.writeSentence('return ' + this.stack.pop().toString() + ';');
+    };
+    Dynarec.prototype.dreturn = function () {
+        this.writeSentence('return ' + this.stack.pop().toString() + ';');
+    };
+    Dynarec.prototype.lreturn = function () {
+        this.writeSentence('return ' + this.stack.pop().toString() + ';');
+    };
     return Dynarec;
 })();
 
@@ -540,23 +1241,21 @@ var JavaClass = (function () {
     }
     JavaClass.prototype.readData = function (stream) {
         var magic = stream.readUInt32BE();
+        if (magic != 3405691582)
+            throw (new Error("Not a java class"));
+
         var minor_version = stream.readUInt16BE();
         var major_version = stream.readUInt16BE();
         var contant_pool_count = stream.readUInt16BE();
 
-        if (magic != 3405691582)
-            throw (new Error("Not a java class"));
-
         this.constantPool = new ConstantPool();
-        var constants = [null, null];
-        while (--contant_pool_count > 0) {
-            var item = this.readConstantPoolInfo(stream);
-            if (item instanceof JavaConstantLong)
-                contant_pool_count--;
-            console.log(constants.length, item.constructor, item);
-            constants.push(item);
+        for (var index = 1; index < contant_pool_count; index++) {
+            var item = this.constantPool.items[index] = JavaClass.readConstantPoolInfo(this.constantPool, stream);
+            if (item instanceof JavaConstantLong || item instanceof JavaConstantDouble)
+                index++;
         }
-        this.constantPool.items = constants;
+
+        this.constantPool.dump();
 
         var access_flags = stream.readUInt16BE();
         var this_class = stream.readUInt16BE();
@@ -595,33 +1294,33 @@ var JavaClass = (function () {
         });
     };
 
-    JavaClass.prototype.readConstantPoolInfo = function (stream) {
+    JavaClass.readConstantPoolInfo = function (pool, stream) {
         var offset = stream.position;
         var type = stream.readUInt8();
 
         switch (type) {
             case 1 /* Utf8 */:
-                return new JavaConstantUtf8(stream.readBytes(stream.readUInt16BE()));
+                return new JavaConstantUtf8(pool, stream.readBytes(stream.readUInt16BE()));
             case 3 /* Integer */:
-                return new JavaConstantInt(stream.readInt32BE());
+                return new JavaConstantInt(pool, stream.readInt32BE());
             case 4 /* Float */:
                 throw (new Error("CONSTANT.Float"));
             case 5 /* Long */:
-                return new JavaConstantLong(stream.readInt32BE(), stream.readInt32BE());
+                return new JavaConstantLong(pool, stream.readInt32BE(), stream.readInt32BE());
             case 6 /* Double */:
                 throw (new Error("CONSTANT.Double"));
             case 7 /* Class */:
-                return new JavaConstantClassReference(stream.readUInt16BE());
+                return new JavaConstantClassReference(pool, stream.readUInt16BE());
             case 8 /* String */:
-                return new JavaConstantStringReference(stream.readUInt16BE());
+                return new JavaConstantStringReference(pool, stream.readUInt16BE());
             case 9 /* Fieldref */:
-                return new JavaConstantFieldReference(stream.readUInt16BE(), stream.readUInt16BE());
+                return new JavaConstantFieldReference(pool, stream.readUInt16BE(), stream.readUInt16BE());
             case 10 /* Methodref */:
-                return new JavaConstantMethodReference(stream.readUInt16BE(), stream.readUInt16BE());
+                return new JavaConstantMethodReference(pool, stream.readUInt16BE(), stream.readUInt16BE());
             case 11 /* InterfaceMethodref */:
-                return new JavaConstantInterfaceMethodReference(stream.readUInt16BE(), stream.readUInt16BE());
+                return new JavaConstantInterfaceMethodReference(pool, stream.readUInt16BE(), stream.readUInt16BE());
             case 12 /* NameAndType */:
-                return new JavaConstantNameTypeDescriptor(stream.readUInt16BE(), stream.readUInt16BE());
+                return new JavaConstantNameTypeDescriptor(pool, stream.readUInt16BE(), stream.readUInt16BE());
         }
 
         throw (new Error("Unknown type of constant pool info " + type + " at " + 'className' + ":" + offset + ":"));
@@ -651,4 +1350,3 @@ var JavaClass = (function () {
 var javaClass = new JavaClass();
 
 javaClass.readData(new Stream(fs.readFileSync(__dirname + '/test/Bits.class')));
-//# sourceMappingURL=main.js.map

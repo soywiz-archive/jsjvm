@@ -51,36 +51,10 @@
     <TypeScriptRemoveComments>true</TypeScriptRemoveComments>
     <TypeScriptSourceMap>false</TypeScriptSourceMap>
   </PropertyGroup>
+  <ItemGroup />
   <ItemGroup>
     <TypeScriptCompile Include="main.ts" />
-    <TypeScriptCompile Include="src\attributes.ts" />
-    <TypeScriptCompile Include="src\ClassData.ts" />
-    <TypeScriptCompile Include="src\ClassLoader.ts" />
-    <TypeScriptCompile Include="src\ConstantPool.ts" />
-    <TypeScriptCompile Include="src\difflib.ts" />
-    <TypeScriptCompile Include="src\disassembler.ts" />
-    <TypeScriptCompile Include="src\doppio.ts" />
-    <TypeScriptCompile Include="src\enums.ts" />
-    <TypeScriptCompile Include="src\exceptions.ts" />
-    <TypeScriptCompile Include="src\gLong.ts" />
-    <TypeScriptCompile Include="src\jar.ts" />
-    <TypeScriptCompile Include="src\java_cli.ts" />
-    <TypeScriptCompile Include="src\java_object.ts" />
-    <TypeScriptCompile Include="src\jvm.ts" />
-    <TypeScriptCompile Include="src\logging.ts" />
-    <TypeScriptCompile Include="src\methods.ts" />
-    <TypeScriptCompile Include="src\natives.ts" />
-    <TypeScriptCompile Include="src\opcodes.ts" />
-    <TypeScriptCompile Include="src\option_parser.ts" />
-    <TypeScriptCompile Include="src\runtime.ts" />
-    <TypeScriptCompile Include="src\testing.ts" />
-    <TypeScriptCompile Include="src\threading.ts" />
-    <TypeScriptCompile Include="src\util.ts" />
-    <TypeScriptCompile Include="typings\node.d.ts" />
-    <TypeScriptCompile Include="typings\underscore.d.ts" />
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="sample\" />
+    <TypeScriptCompile Include="node.d.ts" />
   </ItemGroup>
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
     <TypeScriptModuleKind>commonjs</TypeScriptModuleKind>

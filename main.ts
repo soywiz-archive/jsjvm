@@ -18,6 +18,7 @@ class Stream {
 	readBytes(count: number) { return this._move(this.buffer.slice(this.position, this.position + count), count); }
 }
 
+// http://en.wikipedia.org/wiki/Java_bytecode_instruction_listings
 enum Opcode {
 	nop = 0x00, aconst_null = 0x01, iconst_m1 = 0x02, iconst_0 = 0x03, iconst_1 = 0x04, iconst_2 = 0x05, iconst_3 = 0x06, iconst_4 = 0x07, iconst_5 = 0x08, lconst_0 = 0x09,
 	lconst_1 = 0x0a, fconst_0 = 0x0b, fconst_1 = 0x0c, fconst_2 = 0x0d, dconst_0 = 0x0e, dconst_1 = 0x0f, bipush = 0x10, sipush = 0x11, ldc = 0x12, ldc_w = 0x13, ldc2_w = 0x14,
@@ -45,26 +46,53 @@ var OpcodesArgs = {
 };
 
 enum ACC_CLASS { PUBLIC = 0x0001, FINAL = 0x0010, SUPER = 0x0020, INTERFACE = 0x0200, ABSTRACT = 0x0400 }
-enum ACC_FIELD { PUBLIC = 0x0001, PRIVATE = 0x0002, PROTECTED = 0x0004, STATIC = 0x0008, FINAL = 0x0010, VOLATILE = 0x0040, TRANSIENT = 0x0080 }
-enum ACC_METHOD { PUBLIC = 0x0001, PRIVATE = 0x0002, PROTECTED = 0x0004, STATIC = 0x0008, FINAL = 0x0010, SYNCHRONIZED = 0x0020, NATIVE = 0x0100, ABSTRACT = 0x0400, STRICT = 0x0800 }
+enum ACC_MEMBER { PUBLIC = 0x0001, PRIVATE = 0x0002, PROTECTED = 0x0004, STATIC = 0x0008, FINAL = 0x0010, SYNCHRONIZED = 0x0020, VOLATILE = 0x0040, TRANSIENT = 0x0080, NATIVE = 0x0100, ABSTRACT = 0x0400, STRICT = 0x0800 }
 enum CONSTANT { Utf8 = 1, Integer = 3, Float = 4, Long = 5, Double = 6, Class = 7, String = 8, Fieldref = 9, Methodref = 10, InterfaceMethodref = 11, NameAndType = 12 }
 
-class JavaConstantUtf8 {
-	string = "";
-	constructor(data: NodeBuffer) {
-		this.string = data.toString('utf-8');
+class ConstantPool {
+	public items = <JavaConstant[]>[];
+
+	get<T>(index: number) { return <T><any>this.items[index]; }
+	getValue(index: number) { return (<any>this.items[index]).value; }
+	getString(index: number) { return this.get<JavaConstantUtf8>(index).string; }
+	getClassName(index: number) { return this.getString(this.get<JavaConstantClassReference>(index).indexName); }
+
+	getMethodName(index: number) {
+		var mr = this.getMethodReference(index);
+		var className = this.getString(this.get<JavaConstantClassReference>(mr.indexClassReference).indexName);
+		var methodName = this.getString(this.get<JavaConstantNameTypeDescriptor>(mr.indexNameType).indexName);
+		var typeName = this.getString(this.get<JavaConstantNameTypeDescriptor>(mr.indexNameType).indexType);
+		return className + '.' + methodName + typeName;
 	}
+
+	getType(index: number) { return this.items[index].constructor; }
+	getMethodReference(index: number) { return this.get<JavaConstantMethodReference>(index); }
+	getMethodType(index: number) { return this.getMethodReference(index).type(this); }
+	dump() { this.items.forEach((item, index) => { console.log(index, item.constructor, item); }); }
 }
 
 interface JavaConstant { }
-class JavaConstantInt { constructor(public value: number) { } }
-class JavaConstantLong { constructor(public low: number, public high: number) { } }
-class JavaConstantClassReference { constructor(public index: number) { } }
-class JavaConstantStringReference { constructor(public index: number) { } }
-class JavaConstantFieldReference { constructor(public index1: number, public index2: number) { } }
-class JavaConstantMethodReference { constructor(public index1: number, public index2: number) { } }
-class JavaConstantInterfaceMethodReference { constructor(public index1: number, public index2: number) { } }
-class JavaConstantNameTypeDescriptor { constructor(public index1: number, public index2: number) { } }
+class JavaConstantUtf8 implements JavaConstant { string = ""; constructor(pool: ConstantPool, data: NodeBuffer) { this.string = data.toString('utf-8'); } }
+class JavaConstantInt implements JavaConstant { constructor(pool: ConstantPool, public value: number) { } }
+class JavaConstantLong implements JavaConstant { constructor(pool: ConstantPool, public low: number, public high: number) { } }
+class JavaConstantDouble implements JavaConstant { constructor(pool: ConstantPool, public value: number) { } }
+class JavaConstantClassReference implements JavaConstant { constructor(pool: ConstantPool, public indexName: number) { } }
+class JavaConstantStringReference implements JavaConstant { constructor(pool: ConstantPool, public index: number) { } }
+class JavaConstantFieldReference implements JavaConstant { constructor(pool: ConstantPool, public index1: number, public index2: number) { } }
+class JavaConstantMethodReference implements JavaConstant {
+	constructor(pool: ConstantPool, public indexClassReference: number, public indexNameType: number) { }
+	classReference(pool: ConstantPool) { return pool.get<JavaConstantClassReference>(this.indexClassReference); }
+	className(pool: ConstantPool) { return pool.getString(this.classReference(pool).indexName); }
+	nameTypeDescriptor(pool: ConstantPool) { return pool.get<JavaConstantNameTypeDescriptor>(this.indexNameType); }
+	name(pool: ConstantPool) { return this.nameTypeDescriptor(pool).name(pool); }
+	type(pool: ConstantPool) { return this.nameTypeDescriptor(pool).type(pool); }
+}
+class JavaConstantInterfaceMethodReference implements JavaConstant { constructor(pool: ConstantPool, public index1: number, public index2: number) { } }
+class JavaConstantNameTypeDescriptor implements JavaConstant {
+	constructor(pool: ConstantPool, public indexName: number, public indexType: number) { }
+	name(pool: ConstantPool) { return pool.getString(this.indexName); }
+	type(pool: ConstantPool) { return pool.getString(this.indexType); }
+}
 
 class JavaMemberInfo {
 	constructor(public access_flags: number, public name_index: number, public descriptor_index: number, public attributes: JavaAttributeInfo[]) { }
@@ -72,30 +100,39 @@ class JavaMemberInfo {
 
 class JavaAttributeInfo { constructor(public index: number, public data: NodeBuffer) { } }
 
-class OpcodeReader {
-	static read(code: Stream) {
+class Instruction {
+	public name: string;
+
+	constructor(public offset: number, public op: Opcode, public param: any) {
+		this.name = Opcode[op];
+	}
+}
+
+class InstructionReader {
+	static read(code: Stream): Instruction {
+		var offset = code.position;
 		var op = <Opcode>code.readUInt8();
 		switch (op) {
 			case Opcode.tableswitch: throw (new Error("Not implemented tableswitch"));
 			case Opcode.lookupswitch: throw (new Error("Not implemented lookupswitch"));
-			case Opcode.bipush: return { op: op, name: Opcode[op], param: code.readUInt8() };
-			case Opcode.sipush: return { op: op, name: Opcode[op], param: code.readUInt16BE() };
+			case Opcode.bipush: return new Instruction(offset, op, code.readUInt8());
+			case Opcode.sipush: return new Instruction(offset, op, code.readUInt16BE());
 			case Opcode.iload: case Opcode.lload: case Opcode.fload: case Opcode.dload: case Opcode.aload:
 			case Opcode.istore: case Opcode.lstore: case Opcode.fstore: case Opcode.dstore: case Opcode.astore: case Opcode.ret:
-				return { op: op, name: Opcode[op], param: code.readUInt8() };
+				return new Instruction(offset, op, code.readUInt8());
 
-			case Opcode.ldc: return { op: op, name: Opcode[op], param: code.readUInt8() };
+			case Opcode.ldc: return new Instruction(offset, op, code.readUInt8());
 
 			case Opcode.ldc_w: case Opcode.ldc2_w:  case Opcode.getstatic: case Opcode.putstatic: 
 			case Opcode.getfield: case Opcode.putfield:  case Opcode.new: case Opcode.invokevirtual: case Opcode.invokespecial:
 			case Opcode.invokestatic: case Opcode.anewarray: case Opcode.checkcast: case Opcode.instanceof:
-				return { op: op, name: Opcode[op], param: code.readUInt16BE() };
+				return new Instruction(offset, op, code.readUInt16BE());
 
 			case Opcode.iinc:  throw (new Error("Not implemented index_const_body"));
 			case Opcode.ifeq: case Opcode.ifne: case Opcode.iflt: case Opcode.ifge: case Opcode.ifgt: case Opcode.ifle: 
 			case Opcode.if_icmpeq: case Opcode.if_icmpne: case Opcode.if_icmplt: case Opcode.if_icmpge: case Opcode.if_icmpgt: case Opcode.if_icmple: 
 			case Opcode.if_acmpeq: case Opcode.if_acmpne:  case Opcode.goto: case Opcode.jsr:  case Opcode.ifnull: case Opcode.ifnonnull:
-				return { op: op, name: Opcode[op], param: code.readInt16BE() };
+				return new Instruction(offset, op, code.readInt16BE());
 
 			case Opcode.newarray: throw (new Error("Not implemented newarray"));
 			case Opcode.wide: throw (new Error("Not implemented wide"));
@@ -103,23 +140,24 @@ class OpcodeReader {
 			case Opcode.invokeinterface: throw (new Error("Not implemented invokeinterface"));
 			case Opcode.invokedynamic: throw (new Error("Not implemented invokedynamic"));
 			case Opcode.goto_w: case Opcode.jsr_w: throw (new Error("Not implemented branchbyte1_4_body"));
-			default: return { op: op, name: Opcode[op] };
+			default: return new Instruction(offset, op, null);
 		}
 	}
 }
 
 class JavaMethod {
 	public name: string;
-	public descriptor: string;
+	public methodTypeStr: string;
 
 	constructor(private pool: ConstantPool, public info: JavaMemberInfo) {
 		this.name = pool.getString(info.name_index);
-		this.descriptor = pool.getString(info.descriptor_index);
+		this.methodTypeStr = pool.getString(info.descriptor_index);
 		this.parse();
 	}
 
 	parse() {
-		console.log('JavaMethod.parse() -> ', this.name, this.descriptor);
+		var methodType = JavaMethodType.demangle(this.methodTypeStr);
+		console.log('JavaMethod.parse() -> ', this.name, this.methodTypeStr, methodType.mangled);
 		this.info.attributes.forEach(attribute => {
 			var attribute_name = this.pool.getString(attribute.index);
 			//console.log('attribute:', attribute_name);
@@ -131,32 +169,319 @@ class JavaMethod {
 				var code_length = attr2.readInt32BE();
 				var code = new Stream(attr2.readBytes(code_length));
 				console.log('max_stack_locals', max_stack, max_locals);
+
+				var instructions = <Instruction[]>[];
 				while (!code.eof) {
-					var op = OpcodeReader.read(code);
-					console.log('op', op);
+					instructions.push(InstructionReader.read(code));
 				}
+				console.log(Dynarec.getFunctionCode(this.pool, methodType, max_stack, max_locals, ((this.info.access_flags & ACC_MEMBER.STATIC) != 0), instructions));
 			}
 		});
 	}
 }
 
-class ConstantPool {
-	public items = <JavaConstant[]>[];
+class Node {
+	toString() { return ''; }
+}
+class NodeRef extends Node {
+	constructor(public name: string) { super(); }
+	toString() { return this.name; }
+}
+class NodeValue extends Node {
+	constructor(public value: number) { super(); }
+	toString() { return String(this.value); }
+}
+class NodeArrayAccess extends Node {
+	constructor(public array: Node, public index: Node) { super(); }
+	toString() { return this.array.toString() + '[' + this.index.toString() + ']'; }
+}
 
-	get<T>(index: number) {
-		return <T>this.items[index];
+class NodeCastInt extends Node { constructor(public node: Node) { super(); } toString() { return '(' + this.node.toString() + '|0' + ')'; } }
+class NodeCastLong extends Node { constructor(public node: Node) { super(); } toString() { return this.node.toString(); } }
+class NodeCastDouble extends Node { constructor(public node: Node) { super(); } toString() { return this.node.toString(); } }
+class NodeCastFloat extends Node { constructor(public node: Node) { super(); } toString() { return this.node.toString(); } }
+
+class NodeBinop extends Node {
+	constructor(public left: Node, public op: string, public right: Node) { super(); }
+	toString() { return this.left.toString() + ' ' + this.op + ' ' + this.right.toString(); }
+}
+
+class NodeCall extends Node {
+	constructor(public methodName: string, public args: Node[]) { super(); }
+	toString() { return this.methodName + '(' + this.args.map(arg => arg.toString()).join(', ') + ')'; }
+}
+
+class StringReader {
+	private offset = 0;
+	constructor(private reference: string) {
 	}
-
-	getString(index: number) {
-		return this.get<JavaConstantUtf8>(index).string;
+	get length() { return this.reference.length; }
+	get available() { return this.length - this.offset; }
+	get eof() { return this.available <= 0; }
+	read() {
+		return this.reference.charAt(this.offset++);
 	}
+}
 
-	getClassName(index: number) {
-		return this.getString(this.get<JavaConstantClassReference>(index).index);
+class JavaType {
+	mangled = "";
+
+	static demangle(data: string) { return JavaType._demangle(new StringReader(data)); }
+
+	static _demangle(data: StringReader) {
+		var type = data.read();
+		switch (type) {
+			case 'V': return new JavaVoid();
+			case 'I': return new JavaInteger();
+			case 'J': return new JavaLong();
+			case 'F': return new JavaFloat();
+			case 'B': return new JavaByte();
+			case 'Z': return new JavaBoolean();
+			case 'S': return new JavaShort();
+			case 'C': return new JavaCharacter();
+			case 'D': return new JavaDouble();
+			case 'F': return new JavaFloat();
+			case '[': return new JavaArray(JavaType._demangle(data));
+			case ')': return null;
+
+			default: throw(new Error("Unknown type " + type));
+		}
+	}
+}
+
+class JavaVoid extends JavaType { mangled = "V"; }
+class JavaBoolean extends JavaType { mangled = "Z"; }
+class JavaByte extends JavaType { mangled = "B"; }
+class JavaShort extends JavaType { mangled = "S"; }
+class JavaCharacter extends JavaType { mangled = "C"; public boxed_name: String = 'Ljava/lang/Character;'; }
+class JavaInteger extends JavaType { mangled = "I"; }
+class JavaFloat extends JavaType { mangled = "F"; }
+class JavaDouble extends JavaType { mangled = "D"; }
+class JavaLong extends JavaType { mangled = "J"; }
+class JavaArray extends JavaType { constructor(public type: JavaType) { super(); this.mangled = '[' + type.mangled; } }
+
+class JavaMethodType extends JavaType {
+	arguments = <JavaType[]>[];
+	rettype: JavaType;
+	mangled = "";
+
+	static demangle(data: string) { return JavaMethodType._demangle(new StringReader(data)); }
+	static _demangle(str: StringReader) {
+		var methodType = new JavaMethodType();
+		if (str.read() != '(') throw (new Error("Not a method type"));
+		while (!str.eof) {
+			var type: JavaType = JavaType._demangle(str);
+			if (type === null) break;
+			methodType.arguments.push(type);
+		}
+		methodType.rettype = JavaType._demangle(str);
+		methodType.mangled = '(' + methodType.arguments.map(arg => arg.mangled).join('') + ')' + methodType.rettype.mangled;
+		if (!str.eof) throw(new Error("Not loaded the entire string"));
+		return methodType;
 	}
 }
 
 class Dynarec {
+	constructor(private pool: ConstantPool, private methodType: JavaMethodType, private max_stack: number, private max_locals: number, private is_static: boolean) {
+	}
+
+	static getFunctionCode(pool: ConstantPool, methodType: JavaMethodType, max_stack: number, max_locals: number, is_static: boolean, instructions: Instruction[]) {
+		var dynarec = new Dynarec(pool, methodType, max_stack, max_locals, is_static);
+		dynarec.process(instructions);
+		var out = '';
+		out += 'function(' + (new Array(methodType.arguments.length)).map(index => 'arg' + index).join(', ') + ') {\n';
+		out += dynarec.body;
+		out += '}\n';
+		return out;
+	}
+
+	stack = <Node[]>[];
+	body = "";
+
+	writeSentence(text: string) {
+		this.body += text + "\n";
+	}
+
+	process(instructions: Instruction[]) {
+		console.log('-----------------------------');
+		instructions.forEach(i => {
+			this.processOne(i);
+		});
+		console.log('///////////////////////////// ', this.stack.length);
+		if (this.stack.length) console.warn('stack length not zero at the end of the function! Probably a bug!');
+	}
+
+	processOne(i: Instruction): any {
+		var op = i.op, param = i.param;
+		//console.log(i);
+		switch (op) {
+			case Opcode.aload_0: case Opcode.aload_1: case Opcode.aload_2: case Opcode.aload_3: return this.aload(op - Opcode.aload_0);
+			case Opcode.iload_0: case Opcode.iload_1: case Opcode.iload_2: case Opcode.iload_3: return this.iload(op - Opcode.iload_0);
+			case Opcode.lload_0: case Opcode.lload_1: case Opcode.lload_2: case Opcode.lload_3: return this.lload(op - Opcode.lload_0);
+			case Opcode.fload_0: case Opcode.fload_1: case Opcode.fload_2: case Opcode.fload_3: return this.fload(op - Opcode.fload_0);
+			case Opcode.dload_0: case Opcode.dload_1: case Opcode.dload_2: case Opcode.dload_3: return this.dload(op - Opcode.dload_0);
+
+			case Opcode.aload: return this.aload(param);
+			case Opcode.iload: return this.iload(param);
+			case Opcode.lload: return this.lload(param);
+			case Opcode.fload: return this.fload(param);
+			case Opcode.dload: return this.dload(param);
+
+			case Opcode.astore_0: case Opcode.astore_1: case Opcode.astore_2: case Opcode.astore_3: return this.astore(op - Opcode.astore_0);
+			case Opcode.istore_0: case Opcode.istore_1: case Opcode.istore_2: case Opcode.istore_3: return this.istore(op - Opcode.istore_0);
+			case Opcode.lstore_0: case Opcode.lstore_1: case Opcode.lstore_2: case Opcode.lstore_3: return this.lstore(op - Opcode.lstore_0);
+			case Opcode.fstore_0: case Opcode.fstore_1: case Opcode.fstore_2: case Opcode.fstore_3: return this.fstore(op - Opcode.fstore_0);
+			case Opcode.dstore_0: case Opcode.dstore_1: case Opcode.dstore_2: case Opcode.dstore_3: return this.dstore(op - Opcode.dstore_0);
+
+			case Opcode.astore: return this.astore(param);
+			case Opcode.istore: return this.istore(param);
+			case Opcode.lstore: return this.lstore(param);
+			case Opcode.fstore: return this.fstore(param);
+			case Opcode.dstore: return this.dstore(param);
+
+			case Opcode.iconst_m1: case Opcode.iconst_0: case Opcode.iconst_1: case Opcode.iconst_2: case Opcode.iconst_3: case Opcode.iconst_4: case Opcode.iconst_5: return this.iconst(op - Opcode.iconst_0);
+
+			case Opcode.ldc2_w: return this.ldc2_w(param);
+
+			case Opcode.invokespecial: return this.invokespecial(param);
+			case Opcode.invokestatic: return this.invokestatic(param);
+			case Opcode.Return: return this.Return();
+			case Opcode.ireturn: return this.ireturn();
+			case Opcode.freturn: return this.freturn();
+			case Opcode.dreturn: return this.dreturn();
+			case Opcode.lreturn: return this.lreturn();
+
+			case Opcode.iadd: return this.ibinop('+');
+			case Opcode.iand: return this.ibinop('&');
+			case Opcode.ishl: return this.ibinop('<<');
+			case Opcode.ishr: return this.ibinop('>>');
+			case Opcode.iushr: return this.ibinop('>>>');
+
+			case Opcode.ladd: return this.call('Long.add', 2);
+			case Opcode.land: return this.call('Long.and', 2);
+			case Opcode.lshl: return this.call('Long.shl', 2);
+			case Opcode.lshr: return this.call('Long.shr', 2);
+			case Opcode.lushr: return this.call('Long.ushr', 2);
+
+			case Opcode.sipush: return this.iconst(param);
+			case Opcode.bipush: return this.iconst(param);
+
+			case Opcode.i2b: case Opcode.i2c: case Opcode.i2d: case Opcode.i2f: case Opcode.i2l:
+			case Opcode.i2s: case Opcode.l2d: case Opcode.l2f: case Opcode.l2i:
+				return this.call('Convert.' + Opcode[op], 1);
+
+			case Opcode.baload: return this.baload();
+			case Opcode.bastore: return this.bastore();
+
+			case Opcode.ifeq: return this.ifcond('==', param);
+			case Opcode.goto: return this.goto(param);
+
+			default:
+				throw(new Error("Not implemented opcode " + i.name + "!"));
+		}
+	}
+
+	private call(method: string, count: number) {
+		var args = <Node[]>[]; for (var n = 0; n < count; n++) args.push(this.stack.pop());
+		this.stack.push(new NodeCall(method, args.reverse()));
+	}
+
+	private ibinop(op: string) {
+		var right = this.stack.pop();
+		var left = this.stack.pop();
+		this.stack.push(new NodeBinop(left, op, right));
+	}
+
+	private _invoke(invoketype: string, index: number) {
+		var methodInfo = this.pool.getMethodReference(index);
+		var className = methodInfo.className(this.pool);
+		var name = methodInfo.name(this.pool);
+		var type = methodInfo.type(this.pool)
+		var demangledType = JavaMethodType.demangle(this.pool.getMethodType(index));
+		var argCount = demangledType.arguments.length;
+		var args = <Node[]>[];
+		for (var n = 0; n < argCount; n++) {
+			args.push(this.stack.pop());
+		}
+
+		var call = new NodeCall(name, args);
+
+		if (demangledType.rettype instanceof JavaVoid) {
+			this.writeSentence(call.toString() + ";");
+		} else {
+			this.stack.push(call);
+		}
+	}
+
+	private invokespecial(index: number) {
+		this._invoke('special', index);
+	}
+
+	private invokestatic(index: number) {
+		this._invoke('static', index);
+	}
+
+	private getref(index: number) {
+		if (!this.is_static) {
+			if (index == 0) return new NodeRef('this');
+			index--;
+		}
+		var argLength = this.methodType.arguments.length;
+		if (index < argLength) {
+			return new NodeRef('arg' + (index) + '');
+		} else {
+			return new NodeRef('local_' + (index - argLength));
+		}
+	}
+
+	private aload(index: number) { this.stack.push(this.getref(index)); }
+
+	private iload(index: number) { this.stack.push(new NodeCastInt(this.getref(index))); }
+	private lload(index: number) { this.stack.push(new NodeCastLong(this.getref(index))); }
+	private fload(index: number) { this.stack.push(new NodeCastFloat(this.getref(index))); }
+	private dload(index: number) { this.stack.push(new NodeCastDouble(this.getref(index))); }
+	private astore(index: number) { var ref = this.stack.pop(); console.log(this.getref(index).name, '=', ref.toString(), ';'); }
+	private istore(index: number) { var ref = this.stack.pop(); console.log(this.getref(index).name, '=', ref.toString(), ';'); }
+	private lstore(index: number) { var ref = this.stack.pop(); console.log(this.getref(index).name, '=', ref.toString(), ';'); }
+	private fstore(index: number) { var ref = this.stack.pop(); console.log(this.getref(index).name, '=', ref.toString(), ';'); }
+	private dstore(index: number) { var ref = this.stack.pop(); console.log(this.getref(index).name, '=', ref.toString(), ';'); }
+
+	private iconst(value: number) { this.stack.push(new NodeValue(value)); }
+	private ldc2_w(index: number) {
+		this.stack.push(new NodeValue(this.pool.getValue(index)));
+	}
+
+	private ifcond(cond: string, offset: number) {
+		var a1 = this.stack.pop();
+		//var a2 = this.stack.pop();
+		console.log('if', '(', a1.toString(), cond, 0, ')', 'goto', offset, ';');
+	}
+
+	private goto(offset: number) {
+		this.writeSentence('goto L_' + offset + ';');
+	}
+
+	private baload() {
+		var index = this.stack.pop();
+		var ref = this.stack.pop();
+		this.stack.push(new NodeArrayAccess(ref, index));
+	}
+
+	private bastore() {
+		var value = this.stack.pop();
+		var index = this.stack.pop();
+		var ref = this.stack.pop();
+		this.writeSentence(ref.toString() + '[' + index.toString() + '] = ' + value.toString());
+	}
+
+	private Return() {
+		this.writeSentence('return;');
+	}
+
+	private ireturn() { this.writeSentence('return ' + this.stack.pop().toString() + ';'); }
+	private freturn() { this.writeSentence('return ' + this.stack.pop().toString() + ';'); }
+	private dreturn() { this.writeSentence('return ' + this.stack.pop().toString() + ';'); }
+	private lreturn() { this.writeSentence('return ' + this.stack.pop().toString() + ';'); }
 }
 
 class JavaClass {
@@ -166,21 +491,19 @@ class JavaClass {
 
 	readData(stream: Stream) {
 		var magic = stream.readUInt32BE();
+		if (magic != 3405691582) throw (new Error("Not a java class"));
+
 		var minor_version = stream.readUInt16BE();
 		var major_version = stream.readUInt16BE();
 		var contant_pool_count = stream.readUInt16BE();
 
-		if (magic != 3405691582) throw(new Error("Not a java class"));
-
 		this.constantPool = new ConstantPool();
-		var constants = [null, null];
-		while (--contant_pool_count > 0) {
-			var item = this.readConstantPoolInfo(stream);
-			if (item instanceof JavaConstantLong) contant_pool_count--;
-			console.log(constants.length, item.constructor, item);
-			constants.push(item);
+		for (var index = 1; index < contant_pool_count; index++) {
+			var item = this.constantPool.items[index] = JavaClass.readConstantPoolInfo(this.constantPool, stream);
+			if (item instanceof JavaConstantLong || item instanceof JavaConstantDouble) index++;
 		}
-		this.constantPool.items = constants;
+
+		this.constantPool.dump();
 
 		var access_flags = stream.readUInt16BE();
 		var this_class = stream.readUInt16BE();
@@ -216,22 +539,22 @@ class JavaClass {
 		});
 	}
 
-	private readConstantPoolInfo(stream: Stream): any {
+	private static readConstantPoolInfo(pool: ConstantPool, stream: Stream): any {
 		var offset = stream.position;
 		var type = <CONSTANT>stream.readUInt8();
 
 		switch (type) {
-			case CONSTANT.Utf8: return new JavaConstantUtf8(stream.readBytes(stream.readUInt16BE()));
-			case CONSTANT.Integer: return new JavaConstantInt(stream.readInt32BE());
+			case CONSTANT.Utf8: return new JavaConstantUtf8(pool, stream.readBytes(stream.readUInt16BE()));
+			case CONSTANT.Integer: return new JavaConstantInt(pool, stream.readInt32BE());
 			case CONSTANT.Float: throw (new Error("CONSTANT.Float"));
-			case CONSTANT.Long: return new JavaConstantLong(stream.readInt32BE(), stream.readInt32BE());
+			case CONSTANT.Long: return new JavaConstantLong(pool, stream.readInt32BE(), stream.readInt32BE());
 			case CONSTANT.Double: throw (new Error("CONSTANT.Double"));
-			case CONSTANT.Class: return new JavaConstantClassReference(stream.readUInt16BE());
-			case CONSTANT.String: return new JavaConstantStringReference(stream.readUInt16BE());
-			case CONSTANT.Fieldref: return new JavaConstantFieldReference(stream.readUInt16BE(), stream.readUInt16BE());
-			case CONSTANT.Methodref: return new JavaConstantMethodReference(stream.readUInt16BE(), stream.readUInt16BE());
-			case CONSTANT.InterfaceMethodref: return new JavaConstantInterfaceMethodReference(stream.readUInt16BE(), stream.readUInt16BE());
-			case CONSTANT.NameAndType: return new JavaConstantNameTypeDescriptor(stream.readUInt16BE(), stream.readUInt16BE());
+			case CONSTANT.Class: return new JavaConstantClassReference(pool, stream.readUInt16BE());
+			case CONSTANT.String: return new JavaConstantStringReference(pool, stream.readUInt16BE());
+			case CONSTANT.Fieldref: return new JavaConstantFieldReference(pool, stream.readUInt16BE(), stream.readUInt16BE());
+			case CONSTANT.Methodref: return new JavaConstantMethodReference(pool, stream.readUInt16BE(), stream.readUInt16BE());
+			case CONSTANT.InterfaceMethodref: return new JavaConstantInterfaceMethodReference(pool, stream.readUInt16BE(), stream.readUInt16BE());
+			case CONSTANT.NameAndType: return new JavaConstantNameTypeDescriptor(pool, stream.readUInt16BE(), stream.readUInt16BE());
 		}
 
 		throw (new Error("Unknown type of constant pool info " + type + " at " + 'className' + ":" + offset + ":"));
