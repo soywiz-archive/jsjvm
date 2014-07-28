@@ -51,10 +51,15 @@
     <TypeScriptRemoveComments>true</TypeScriptRemoveComments>
     <TypeScriptSourceMap>false</TypeScriptSourceMap>
   </PropertyGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <Content Include="test\Bits.class" />
+  </ItemGroup>
   <ItemGroup>
     <TypeScriptCompile Include="main.ts" />
-    <TypeScriptCompile Include="node.d.ts" />
+    <TypeScriptCompile Include="typings\node.d.ts" />
+    <TypeScriptCompile Include="src\jsjvm.ts" />
+    <TypeScriptCompile Include="typings\mocha.d.ts" />
+    <TypeScriptCompile Include="test\test1.ts" />
   </ItemGroup>
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
     <TypeScriptModuleKind>commonjs</TypeScriptModuleKind>

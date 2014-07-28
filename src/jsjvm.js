@@ -995,7 +995,7 @@ var Dynarec = (function () {
     function Dynarec() {
     }
     Dynarec.getFunctionCode = function (pool, methodName, methodType, max_stack, max_locals, is_static, instructions) {
-        var dynarec = new Dynarec0(pool, methodName, methodType, max_stack, max_locals, is_static);
+        var dynarec = new Dynarec1(pool, methodName, methodType, max_stack, max_locals, is_static);
         dynarec.process(instructions);
         var func;
 

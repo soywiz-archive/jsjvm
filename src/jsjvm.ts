@@ -306,7 +306,7 @@ class JavaMethodType extends JavaType {
 
 class Dynarec {
 	static getFunctionCode(pool: ConstantPool, methodName: string, methodType: JavaMethodType, max_stack: number, max_locals: number, is_static: boolean, instructions: Instruction[]) {
-		var dynarec = new Dynarec0(pool, methodName, methodType, max_stack, max_locals, is_static);
+		var dynarec = new Dynarec1(pool, methodName, methodType, max_stack, max_locals, is_static);
 		dynarec.process(instructions);
 		var func;
 
