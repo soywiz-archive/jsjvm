@@ -1229,31 +1229,31 @@ var Dynarec0 = (function () {
     Dynarec0.prototype.getstatic = function (index) {
         console.info(this.pool.getType(index));
         var methodInfo = this.pool.getMethodReference(index);
-        this.writeSentence('stack.push(getstatic(' + methodInfo.name(this.pool) + '));');
+        this.writeSentence('stack.push(getstatic(' + methodInfo.name(this.pool) + ')); // getstatic');
     };
 
     Dynarec0.prototype.New = function (index) {
-        this.writeSentence('stack.push(new ' + this.pool.getClassName(index) + '());');
+        this.writeSentence('stack.push(new ' + this.pool.getClassName(index) + '()); // new');
     };
 
     Dynarec0.prototype.dup = function () {
-        this.writeSentence('stack.push(stack[stack.length - 1]);');
+        this.writeSentence('stack.push(stack[stack.length - 1]); // dup');
     };
 
     Dynarec0.prototype.call = function (method, count) {
-        this.writeSentence('stack.push(' + method + '(stack.splice(stack.length - ' + count + ')));');
+        this.writeSentence('stack.push(' + method + '(stack.splice(stack.length - ' + count + '))); // call');
     };
 
     Dynarec0.prototype.call_void = function (method, count) {
-        this.writeSentence('' + method + '(stack.splice(stack.length - ' + count + '));');
+        this.writeSentence('' + method + '(stack.splice(stack.length - ' + count + ')); // call_void');
     };
 
     Dynarec0.prototype.iinc = function (local, increment) {
-        this.writeSentence(this.getref(local) + ' = ' + this.getref(local) + ' + ' + increment);
+        this.writeSentence(this.getref(local) + ' = ' + this.getref(local) + ' + ' + increment + '; // iinc');
     };
 
     Dynarec0.prototype.ibinop = function (op) {
-        this.writeSentence('var l = stack.pop(), r = stack.pop(); stack.push(l ' + op + ' r);');
+        this.writeSentence('var r = stack.pop(), l = stack.pop(); stack.push(l ' + op + ' r); // ibinop(' + op + ')');
     };
 
     Dynarec0.prototype._invoke = function (invoketype, index) {
@@ -1292,14 +1292,14 @@ var Dynarec0 = (function () {
     };
 
     Dynarec0.prototype.aload = function (index) {
-        this.writeSentence('stack.push(' + this.getref(index) + ');');
+        this.writeSentence('stack.push(' + this.getref(index) + '); // aload');
     };
     Dynarec0.prototype.aaload = function () {
-        this.writeSentence('var i = stack.pop(), a = stack.pop(); stack.push(a[i]);');
+        this.writeSentence('var i = stack.pop(), aref = stack.pop(); stack.push(aref.value[i]); // aaload');
     };
 
     Dynarec0.prototype._load = function (index) {
-        this.writeSentence('stack.push(' + this.getref(index) + ');');
+        this.writeSentence('stack.push(' + this.getref(index) + '.value); // _load');
     };
 
     Dynarec0.prototype.iload = function (index) {
@@ -1316,41 +1316,41 @@ var Dynarec0 = (function () {
     };
 
     Dynarec0.prototype.astore = function (index) {
-        this.writeSentence(this.getref(index) + '.value = stack.pop();');
+        this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store');
     };
     Dynarec0.prototype.istore = function (index) {
-        this.writeSentence(this.getref(index) + '.value = stack.pop();');
+        this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store');
     };
     Dynarec0.prototype.lstore = function (index) {
-        this.writeSentence(this.getref(index) + '.value = stack.pop();');
+        this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store');
     };
     Dynarec0.prototype.fstore = function (index) {
-        this.writeSentence(this.getref(index) + '.value = stack.pop();');
+        this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store');
     };
     Dynarec0.prototype.dstore = function (index) {
-        this.writeSentence(this.getref(index) + '.value = stack.pop();');
+        this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store');
     };
 
     Dynarec0.prototype.iconst = function (value) {
-        this.writeSentence('stack.push(' + value + ');');
+        this.writeSentence('stack.push(' + value + '); // iconst');
     };
     Dynarec0.prototype.ldc2_w = function (index) {
-        this.writeSentence('stack.push(' + this.pool.getValue(index) + ');');
+        this.writeSentence('stack.push(' + this.pool.getValue(index) + '); // ldc2_w');
     };
     Dynarec0.prototype.ldc = function (index) {
-        this.writeSentence('stack.push(' + this.pool.getValue(index) + ');');
+        this.writeSentence('stack.push(' + this.pool.getValue(index) + '); // ldc');
     };
 
     Dynarec0.prototype.ifcond = function (cond, offset) {
-        this.writeSentence('if (stack.pop() ' + cond + ' 0) { label = ' + offset + '; break; }');
+        this.writeSentence('if (stack.pop() ' + cond + ' 0) { label = ' + offset + '; break; } // ifcond(' + cond + ')');
     };
 
     Dynarec0.prototype.ifcond2 = function (cond, offset) {
-        this.writeSentence('if (stack.pop() ' + cond + ' stack.pop()) { label = ' + offset + '; break; }');
+        this.writeSentence('if (stack.pop() ' + cond + ' stack.pop()) { label = ' + offset + '; break; } // ifcond2(' + cond + ')');
     };
 
     Dynarec0.prototype.goto = function (offset) {
-        this.writeSentence('{ label = ' + offset + '; break; };');
+        this.writeSentence('{ label = ' + offset + '; break; }; // goto');
     };
 
     Dynarec0.prototype.baload = function () {
@@ -1358,23 +1358,23 @@ var Dynarec0 = (function () {
     };
 
     Dynarec0.prototype.bastore = function () {
-        this.writeSentence('var val = stack.pop(), i = stack.pop(), aref = stack.pop(); aref.value[i] = val;');
+        this.writeSentence('var val = stack.pop(), i = stack.pop(), aref = stack.pop(); aref.value[i] = val; // bastore');
     };
 
     Dynarec0.prototype.Return = function () {
         this.writeSentence('return;');
     };
     Dynarec0.prototype.ireturn = function () {
-        this.writeSentence('return stack.pop();');
+        this.writeSentence('return stack.pop(); // _return');
     };
     Dynarec0.prototype.freturn = function () {
-        this.writeSentence('return stack.pop();');
+        this.writeSentence('return stack.pop(); // _return');
     };
     Dynarec0.prototype.dreturn = function () {
-        this.writeSentence('return stack.pop();');
+        this.writeSentence('return stack.pop(); // _return');
     };
     Dynarec0.prototype.lreturn = function () {
-        this.writeSentence('return stack.pop();');
+        this.writeSentence('return stack.pop(); // _return');
     };
     return Dynarec0;
 })();

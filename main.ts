@@ -447,31 +447,31 @@ class Dynarec0 {
 	private getstatic(index: number) {
 		console.info(this.pool.getType(index));
 		var methodInfo = this.pool.getMethodReference(index);
-		this.writeSentence('stack.push(getstatic(' + methodInfo.name(this.pool) + '));');
+		this.writeSentence('stack.push(getstatic(' + methodInfo.name(this.pool) + ')); // getstatic');
 	}
 
 	private New(index: number) {
-		this.writeSentence('stack.push(new ' + this.pool.getClassName(index) + '());');
+		this.writeSentence('stack.push(new ' + this.pool.getClassName(index) + '()); // new');
 	}
 
 	private dup() {
-		this.writeSentence('stack.push(stack[stack.length - 1]);');
+		this.writeSentence('stack.push(stack[stack.length - 1]); // dup');
 	}
 
 	private call(method: string, count: number) {
-		this.writeSentence('stack.push(' + method + '(stack.splice(stack.length - ' + count + ')));');
+		this.writeSentence('stack.push(' + method + '(stack.splice(stack.length - ' + count + '))); // call');
 	}
 
 	private call_void(method: string, count: number) {
-		this.writeSentence('' + method + '(stack.splice(stack.length - ' + count + '));');
+		this.writeSentence('' + method + '(stack.splice(stack.length - ' + count + ')); // call_void');
 	}
 
 	private iinc(local: number, increment: number) {
-		this.writeSentence(this.getref(local) + ' = ' + this.getref(local) + ' + ' + increment);
+		this.writeSentence(this.getref(local) + ' = ' + this.getref(local) + ' + ' + increment + '; // iinc');
 	}
 
 	private ibinop(op: string) {
-		this.writeSentence('var l = stack.pop(), r = stack.pop(); stack.push(l ' + op + ' r);');
+		this.writeSentence('var r = stack.pop(), l = stack.pop(); stack.push(l ' + op + ' r); // ibinop(' + op + ')');
 	}
 
 	private _invoke(invoketype: string, index: number) {
@@ -505,14 +505,14 @@ class Dynarec0 {
 	}
 
 	private aload(index: number) {
-		this.writeSentence('stack.push(' + this.getref(index) + ');');
+		this.writeSentence('stack.push(' + this.getref(index) + '); // aload');
 	}
 	private aaload() {
-		this.writeSentence('var i = stack.pop(), a = stack.pop(); stack.push(a[i]);');
+		this.writeSentence('var i = stack.pop(), aref = stack.pop(); stack.push(aref.value[i]); // aaload');
 	}
 
 	private _load(index: number) {
-		this.writeSentence('stack.push(' + this.getref(index) + ');');
+		this.writeSentence('stack.push(' + this.getref(index) + '.value); // _load');
 	}
 
 	private iload(index: number) { this._load(index); }
@@ -520,26 +520,26 @@ class Dynarec0 {
 	private fload(index: number) { this._load(index); }
 	private dload(index: number) { this._load(index); }
 
-	private astore(index: number) { this.writeSentence(this.getref(index) + '.value = stack.pop();'); }
-	private istore(index: number) { this.writeSentence(this.getref(index) + '.value = stack.pop();'); }
-	private lstore(index: number) { this.writeSentence(this.getref(index) + '.value = stack.pop();'); }
-	private fstore(index: number) { this.writeSentence(this.getref(index) + '.value = stack.pop();'); }
-	private dstore(index: number) { this.writeSentence(this.getref(index) + '.value = stack.pop();'); }
+	private astore(index: number) { this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store'); }
+	private istore(index: number) { this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store'); }
+	private lstore(index: number) { this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store'); }
+	private fstore(index: number) { this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store'); }
+	private dstore(index: number) { this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store'); }
 
-	private iconst(value: number) { this.writeSentence('stack.push(' + value + ');'); }
-	private ldc2_w(index: number) { this.writeSentence('stack.push(' + this.pool.getValue(index) + ');'); }
-	private ldc(index: number) { this.writeSentence('stack.push(' + this.pool.getValue(index) + ');'); }
+	private iconst(value: number) { this.writeSentence('stack.push(' + value + '); // iconst'); }
+	private ldc2_w(index: number) { this.writeSentence('stack.push(' + this.pool.getValue(index) + '); // ldc2_w'); }
+	private ldc(index: number) { this.writeSentence('stack.push(' + this.pool.getValue(index) + '); // ldc'); }
 
 	private ifcond(cond: string, offset: number) {
-		this.writeSentence('if (stack.pop() ' + cond + ' 0) { label = ' + offset + '; break; }');
+		this.writeSentence('if (stack.pop() ' + cond + ' 0) { label = ' + offset + '; break; } // ifcond(' + cond + ')');
 	}
 
 	private ifcond2(cond: string, offset: number) {
-		this.writeSentence('if (stack.pop() ' + cond + ' stack.pop()) { label = ' + offset + '; break; }');
+		this.writeSentence('if (stack.pop() ' + cond + ' stack.pop()) { label = ' + offset + '; break; } // ifcond2(' + cond + ')');
 	}
 
 	private goto(offset: number) {
-		this.writeSentence('{ label = ' + offset + '; break; };');
+		this.writeSentence('{ label = ' + offset + '; break; }; // goto');
 	}
 
 	private baload() {
@@ -547,14 +547,14 @@ class Dynarec0 {
 	}
 
 	private bastore() {
-		this.writeSentence('var val = stack.pop(), i = stack.pop(), aref = stack.pop(); aref.value[i] = val;');
+		this.writeSentence('var val = stack.pop(), i = stack.pop(), aref = stack.pop(); aref.value[i] = val; // bastore');
 	}
 
 	private Return() { this.writeSentence('return;'); }
-	private ireturn() { this.writeSentence('return stack.pop();'); }
-	private freturn() { this.writeSentence('return stack.pop();'); }
-	private dreturn() { this.writeSentence('return stack.pop();'); }
-	private lreturn() { this.writeSentence('return stack.pop();'); }
+	private ireturn() { this.writeSentence('return stack.pop(); // _return'); }
+	private freturn() { this.writeSentence('return stack.pop(); // _return'); }
+	private dreturn() { this.writeSentence('return stack.pop(); // _return'); }
+	private lreturn() { this.writeSentence('return stack.pop(); // _return'); }
 }
 
 class Dynarec1 {
