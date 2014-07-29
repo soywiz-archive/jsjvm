@@ -56,6 +56,10 @@
   </ItemGroup>
   <ItemGroup>
     <TypeScriptCompile Include="main.ts" />
+    <TypeScriptCompile Include="src\opcodes.ts" />
+    <TypeScriptCompile Include="src\runtime.ts" />
+    <TypeScriptCompile Include="src\types.ts" />
+    <TypeScriptCompile Include="src\utils.ts" />
     <TypeScriptCompile Include="typings\node.d.ts" />
     <TypeScriptCompile Include="src\jsjvm.ts" />
     <TypeScriptCompile Include="typings\mocha.d.ts" />
