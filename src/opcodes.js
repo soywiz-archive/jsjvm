@@ -243,7 +243,7 @@ var OpcodeInfo = (function () {
 })();
 exports.OpcodeInfo = OpcodeInfo;
 
-var opcodeInfoList = [
+exports.opcodeInfoList = [
     new OpcodeInfo(0 /* nop */, 0 /* Void */, [], [], 'perform no operation'),
     new OpcodeInfo(1 /* aconst_null */, 0 /* Void */, [], ['null'], 'push a null reference onto the stack'),
     new OpcodeInfo(2 /* iconst_m1 */, 0 /* Void */, [], ['-1'], 'load the int value -1 onto the stack'),
@@ -416,12 +416,12 @@ var opcodeInfoList = [
     new OpcodeInfo(169 /* ret */, 2 /* U8 */, [], [], 'continue execution from address taken from a local variable #index (the asymmetry with jsr is intentional)'),
     new OpcodeInfo(170 /* tableswitch */, 10 /* TableSwitch */, ['index'], [], 'continue execution from an address in the table at offset index'),
     new OpcodeInfo(171 /* lookupswitch */, 11 /* LookupSwitch */, ['key'], [], 'a target address is looked up from a table using a key and execution continues from the instruction at that address'),
-    new OpcodeInfo(172 /* ireturn */, 0 /* Void */, ['value'], null, 'return an integer from a method'),
-    new OpcodeInfo(173 /* lreturn */, 0 /* Void */, ['value'], null, 'return a long value'),
-    new OpcodeInfo(174 /* freturn */, 0 /* Void */, ['value'], null, 'return a float value'),
-    new OpcodeInfo(175 /* dreturn */, 0 /* Void */, ['value'], null, 'return a double value'),
-    new OpcodeInfo(176 /* areturn */, 0 /* Void */, ['objectref'], null, 'return a reference'),
-    new OpcodeInfo(177 /* Return */, 0 /* Void */, [], null, 'return void from method'),
+    new OpcodeInfo(172 /* ireturn */, 0 /* Void */, ['value'], [], 'return an integer from a method'),
+    new OpcodeInfo(173 /* lreturn */, 0 /* Void */, ['value'], [], 'return a long value'),
+    new OpcodeInfo(174 /* freturn */, 0 /* Void */, ['value'], [], 'return a float value'),
+    new OpcodeInfo(175 /* dreturn */, 0 /* Void */, ['value'], [], 'return a double value'),
+    new OpcodeInfo(176 /* areturn */, 0 /* Void */, ['objectref'], [], 'return a reference'),
+    new OpcodeInfo(177 /* Return */, 0 /* Void */, [], [], 'return void from method'),
     new OpcodeInfo(178 /* getstatic */, 4 /* U16 */, [], ['value'], 'get a static field value of a class, where the field is identified by field reference in the constant pool index (index1 << 8 + index2)'),
     new OpcodeInfo(179 /* putstatic */, 4 /* U16 */, ['value'], [], 'set static field to value in a class, where the field is identified by a field reference index in constant pool (indexbyte1 << 8 + indexbyte2'),
     new OpcodeInfo(180 /* getfield */, 4 /* U16 */, ['objectref'], ['value'], 'get a field value of an object objectref, where the field is identified by field reference in the constant pool index (index1 << 8 + index2)'),
@@ -450,4 +450,9 @@ var opcodeInfoList = [
     new OpcodeInfo(254 /* impdep1 */, 0 /* Void */, [], [], 'reserved for implementation-dependent operations within debuggers; should not appear in any class file'),
     new OpcodeInfo(255 /* impdep2 */, 0 /* Void */, [], [], 'reserved for implementation-dependent operations within debuggers; should not appear in any class file')
 ];
+
+var opcodeInfoListByOpcode = {};
+exports.opcodeInfoList.forEach(function (opcodeInfo) {
+    opcodeInfoListByOpcode[opcodeInfo.opcode] = opcodeInfo;
+});
 //# sourceMappingURL=opcodes.js.map

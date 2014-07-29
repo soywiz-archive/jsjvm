@@ -30,7 +30,7 @@ export class OpcodeInfo {
 	get deltaStack() { return this.stackPush.length - this.stackPop.length; }
 }
 
-var opcodeInfoList = [
+export var opcodeInfoList = [
 	new OpcodeInfo(Opcode.nop, ParamType.Void, [], [], 'perform no operation'),
 	new OpcodeInfo(Opcode.aconst_null, ParamType.Void, [], ['null'], 'push a null reference onto the stack'),
 	new OpcodeInfo(Opcode.iconst_m1, ParamType.Void, [], ['-1'], 'load the int value -1 onto the stack'),
@@ -245,12 +245,12 @@ var opcodeInfoList = [
 	new OpcodeInfo(Opcode.tableswitch, ParamType.TableSwitch, ['index'], [], 'continue execution from an address in the table at offset index'),
 	new OpcodeInfo(Opcode.lookupswitch, ParamType.LookupSwitch, ['key'], [], 'a target address is looked up from a table using a key and execution continues from the instruction at that address'),
 
-	new OpcodeInfo(Opcode.ireturn, ParamType.Void, ['value'], null, 'return an integer from a method'),
-	new OpcodeInfo(Opcode.lreturn, ParamType.Void, ['value'], null, 'return a long value'),
-	new OpcodeInfo(Opcode.freturn, ParamType.Void, ['value'], null, 'return a float value'),
-	new OpcodeInfo(Opcode.dreturn, ParamType.Void, ['value'], null, 'return a double value'),
-	new OpcodeInfo(Opcode.areturn, ParamType.Void, ['objectref'], null, 'return a reference'),
-	new OpcodeInfo(Opcode.Return, ParamType.Void, [], null, 'return void from method'),
+	new OpcodeInfo(Opcode.ireturn, ParamType.Void, ['value'], [], 'return an integer from a method'),
+	new OpcodeInfo(Opcode.lreturn, ParamType.Void, ['value'], [], 'return a long value'),
+	new OpcodeInfo(Opcode.freturn, ParamType.Void, ['value'], [], 'return a float value'),
+	new OpcodeInfo(Opcode.dreturn, ParamType.Void, ['value'], [], 'return a double value'),
+	new OpcodeInfo(Opcode.areturn, ParamType.Void, ['objectref'], [], 'return a reference'),
+	new OpcodeInfo(Opcode.Return, ParamType.Void, [], [], 'return void from method'),
 
 	new OpcodeInfo(Opcode.getstatic, ParamType.U16, [], ['value'], 'get a static field value of a class, where the field is identified by field reference in the constant pool index (index1 << 8 + index2)'),
 	new OpcodeInfo(Opcode.putstatic, ParamType.U16, ['value'], [], 'set static field to value in a class, where the field is identified by a field reference index in constant pool (indexbyte1 << 8 + indexbyte2'),
@@ -293,3 +293,7 @@ var opcodeInfoList = [
 	new OpcodeInfo(Opcode.impdep2, ParamType.Void, [], [], 'reserved for implementation-dependent operations within debuggers; should not appear in any class file'),
 ];
 
+var opcodeInfoListByOpcode = <NumberDictionary<OpcodeInfo>>{};
+opcodeInfoList.forEach(opcodeInfo => {
+	opcodeInfoListByOpcode[opcodeInfo.opcode] = opcodeInfo;
+});

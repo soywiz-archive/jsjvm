@@ -45,7 +45,7 @@ export function _demangle(data: StringReader) {
 
 		default: throw (new Error("Unknown type " + type));
 	}
-	}
+}
 
 export function _demangleMethod(str: StringReader) {
 	var methodType = new Method();
