@@ -7,6 +7,7 @@ export class Stream {
 	get available() { return this.buffer.length - this.position; }
 	get eof() { return this.available <= 0; }
 	private _move<T>(value: T, offset: number) { this.position += offset; return value; }
+	pad(pad: number) { while ((this.position % pad) != 0) { this.position++; } }
 	readUInt32BE() { return this._move(this.buffer.readUInt32BE(this.position), 4); }
 	readUInt16BE() { return this._move(this.buffer.readUInt16BE(this.position), 2); }
 	readInt32BE() { return this._move(this.buffer.readInt32BE(this.position), 4); }

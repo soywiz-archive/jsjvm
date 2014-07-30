@@ -4,11 +4,10 @@ var types = require('./types');
 var Opcode = opcodes.Opcode;
 
 var Instruction = (function () {
-    function Instruction(offset, op, stackOffset, param, param2) {
+    function Instruction(offset, op, param, param2) {
         if (typeof param2 === "undefined") { param2 = null; }
         this.offset = offset;
         this.op = op;
-        this.stackOffset = stackOffset;
         this.param = param;
         this.param2 = param2;
         this.name = Opcode[op];
@@ -16,6 +15,13 @@ var Instruction = (function () {
     Object.defineProperty(Instruction.prototype, "opcodeInfo", {
         get: function () {
             return opcodes.opcodeInfoListByOpcode[this.op];
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(Instruction.prototype, "type", {
+        get: function () {
+            return this.opcodeInfo.type;
         },
         enumerable: true,
         configurable: true
@@ -45,18 +51,24 @@ var InstructionReader = (function () {
     InstructionReader.read = function (pool, code) {
         var offset = code.position;
         var op = code.readUInt8();
-        var stackOffset = 0;
-
-        function decorateWithStackOffset(i) {
-            i.stackOffset = InstructionReader.calculateStackOffset(pool, i);
-            return i;
-        }
 
         switch (op) {
             case 170 /* tableswitch */:
                 throw (new Error("Not implemented tableswitch"));
+
             case 171 /* lookupswitch */:
-                throw (new Error("Not implemented lookupswitch"));
+                code.pad(4);
+                var defaultOffset = code.readUInt32BE() + offset;
+                var numPairs = code.readUInt32BE();
+                var pairs = {};
+                for (var n = 0; n < numPairs; n++) {
+                    var key = code.readUInt32BE();
+                    var value = code.readUInt32BE();
+                    pairs[key] = value + offset;
+                }
+                pairs['default'] = defaultOffset;
+                return new Instruction(offset, op, pairs);
+
             case 188 /* newarray */:
                 throw (new Error("Not implemented newarray"));
             case 196 /* wide */:
@@ -72,13 +84,13 @@ var InstructionReader = (function () {
                 throw (new Error("Not implemented branchbyte1_4_body"));
 
             case 16 /* bipush */:
-                return decorateWithStackOffset(new Instruction(offset, op, stackOffset, code.readUInt8()));
+                return new Instruction(offset, op, code.readInt8());
             case 17 /* sipush */:
-                return decorateWithStackOffset(new Instruction(offset, op, stackOffset, code.readUInt16BE()));
+                return new Instruction(offset, op, code.readUInt16BE());
             case 18 /* ldc */:
-                return decorateWithStackOffset(new Instruction(offset, op, stackOffset, code.readUInt8()));
+                return new Instruction(offset, op, code.readUInt8());
             case 132 /* iinc */:
-                return decorateWithStackOffset(new Instruction(offset, op, stackOffset, code.readUInt8(), code.readInt8()));
+                return new Instruction(offset, op, code.readUInt8(), code.readInt8());
 
             case 21 /* iload */:
             case 22 /* lload */:
@@ -91,7 +103,7 @@ var InstructionReader = (function () {
             case 57 /* dstore */:
             case 58 /* astore */:
             case 169 /* ret */:
-                return decorateWithStackOffset(new Instruction(offset, op, stackOffset, code.readUInt8()));
+                return new Instruction(offset, op, code.readUInt8());
 
             case 19 /* ldc_w */:
             case 20 /* ldc2_w */:
@@ -106,7 +118,7 @@ var InstructionReader = (function () {
             case 189 /* anewarray */:
             case 192 /* checkcast */:
             case 193 /* instanceof */:
-                return decorateWithStackOffset(new Instruction(offset, op, stackOffset, code.readUInt16BE()));
+                return new Instruction(offset, op, code.readUInt16BE());
 
             case 153 /* ifeq */:
             case 154 /* ifne */:
@@ -126,10 +138,10 @@ var InstructionReader = (function () {
             case 168 /* jsr */:
             case 198 /* ifnull */:
             case 199 /* ifnonnull */:
-                return decorateWithStackOffset(new Instruction(offset, op, stackOffset, offset + code.readInt16BE()));
+                return new Instruction(offset, op, offset + code.readInt16BE());
 
             default:
-                return decorateWithStackOffset(new Instruction(offset, op, stackOffset, null));
+                return new Instruction(offset, op, null);
         }
     };
     return InstructionReader;

@@ -40,10 +40,10 @@ describe('Ternary.class', () => {
 	var Class = JavaClass.fromStream(new Stream(fs.readFileSync(__dirname + '/../sample/Ternary.class')));
 
 	it('min', () => {
-		var min = Class.getMethod('min').func;
-		assert.equal(3, min(3, 7));
-		assert.equal(3, min(7, 3));
-		assert.equal(-2, min(-1, -2));
+		var method = Class.getMethod('min');
+		assert.equal(3, method.func(3, 7));
+		assert.equal(3, method.func(7, 3));
+		assert.equal(-2, method.func(-1, -2));
 	});
 });
 
@@ -51,11 +51,10 @@ describe('IfTest.class', () => {
 	var Class = JavaClass.fromStream(new Stream(fs.readFileSync(__dirname + '/../sample/IfTest.class')));
 
 	it('demo', () => {
-		var demoMethod = Class.getMethod('demo');
-		var demo = demoMethod.func;
+		var method = Class.getMethod('demo');
 		//console.log(demoMethod.body);
-		assert.equal(1, demo(3, 7, 4));
-		assert.equal(2, demo(7, 3, 4));
+		assert.equal(1, method.func(3, 7, 4));
+		assert.equal(2, method.func(7, 3, 4));
 	});
 });
 
@@ -63,10 +62,9 @@ describe('ForTest.class', () => {
 	var Class = JavaClass.fromStream(new Stream(fs.readFileSync(__dirname + '/../sample/ForTest.class')));
 
 	it('test1', () => {
-		var test1Method = Class.getMethod('test1');
-		var test1 = test1Method.func;
+		var method = Class.getMethod('test1');
 		//console.log(demoMethod.body);
-		assert.equal(1+2+3+4+5+6+7+8+9, test1(10));
+		assert.equal(1+2+3+4+5+6+7+8+9, method.func(10));
 	});
 });
 
@@ -74,10 +72,8 @@ describe('WhileTest.class', () => {
 	var Class = JavaClass.fromStream(new Stream(fs.readFileSync(__dirname + '/../sample/WhileTest.class')));
 
 	it('test1', () => {
-		var test1Method = Class.getMethod('test1');
-		var test1 = test1Method.func;
-		//console.log(demoMethod.body);
-		assert.equal(1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9, test1(10));
+		var method = Class.getMethod('test1');
+		assert.equal(1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9, method.func(10));
 	});
 });
 
@@ -85,17 +81,28 @@ describe('DoWhileTest.class', () => {
 	var Class = JavaClass.fromStream(new Stream(fs.readFileSync(__dirname + '/../sample/DoWhileTest.class')));
 
 	it('test1', () => {
-		var test1Method = Class.getMethod('test1');
-		var test1 = test1Method.func;
-		//console.log(demoMethod.body);
-		assert.equal(55, test1(10));
+		var method = Class.getMethod('test1');
+		assert.equal(55, method.func(10));
 	});
 
 	it('test2', () => {
-		var test1Method = Class.getMethod('test2');
-		var test1 = test1Method.func;
-		//console.log(demoMethod.body);
-		assert.equal(55, test1(10));
+		var method = Class.getMethod('test2');
+		assert.equal(55, method.func(10));
+	});
+});
+
+describe('SwitchTest.class', () => {
+	var Class = JavaClass.fromStream(new Stream(fs.readFileSync(__dirname + '/../sample/SwitchTest.class')));
+
+	it('test1', () => {
+		var method = Class.getMethod('test1');
+		assert.equal(-1, method.func(-1));
+		assert.equal(0, method.func(0));
+		assert.equal(-1, method.func(1));
+		assert.equal(2, method.func(2));
+		assert.equal(3, method.func(3));
+		assert.equal(-4, method.func(4));
+		assert.equal(5, method.func(5));
 	});
 });
 

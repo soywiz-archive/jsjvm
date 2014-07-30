@@ -8,13 +8,9 @@ import OpcodeInfo = opcodes.OpcodeInfo;
 export class Instruction {
 	public name: string;
 
-	constructor(public offset: number, public op: Opcode, public stackOffset: number, public param: any, public param2: any = null) {
-		this.name = Opcode[op];
-	}
-
-	get opcodeInfo(): OpcodeInfo {
-		return opcodes.opcodeInfoListByOpcode[this.op];
-	}
+	constructor(public offset: number, public op: Opcode, public param: any, public param2: any = null) { this.name = Opcode[op]; }
+	get opcodeInfo() { return opcodes.opcodeInfoListByOpcode[this.op]; }
+	get type() { return this.opcodeInfo.type; }
 }
 
 export class InstructionReader {
@@ -35,16 +31,36 @@ export class InstructionReader {
 	static read(pool: constantpool.ConstantPool, code: utils.Stream): Instruction {
 		var offset = code.position;
 		var op = <Opcode>code.readUInt8();
-		var stackOffset = 0;
-
-		function decorateWithStackOffset(i: Instruction) {
-			i.stackOffset = InstructionReader.calculateStackOffset(pool, i);
-			return i;
-		}
 
 		switch (op) {
-			case Opcode.tableswitch: throw (new Error("Not implemented tableswitch"));
-			case Opcode.lookupswitch: throw (new Error("Not implemented lookupswitch"));
+			case Opcode.tableswitch:
+				/*
+				local u4 len = 4 - (offsets + 1) % 4;
+				if (len < 4)u1 byte_pad[len];
+				i4 defaultbyte; //defaultbyte1,defaultbyte2,defaultbyte3,defaultbyte4
+				i4 npairs; //npairs1,npairs2,npairs3,npairs4
+				struct
+				{
+				i4 match;
+				i4 offset;
+				} match_offset[npairs];
+*/
+
+				throw (new Error("Not implemented tableswitch"));
+
+			case Opcode.lookupswitch:
+				code.pad(4);
+				var defaultOffset = code.readUInt32BE() + offset;
+				var numPairs = code.readUInt32BE();
+				var pairs = {};
+				for (var n = 0; n < numPairs; n++) {
+					var key = code.readUInt32BE();
+					var value = code.readUInt32BE();
+					pairs[key] = value + offset;
+				}
+				pairs['default'] = defaultOffset;
+				return new Instruction(offset, op, pairs);
+
 			case Opcode.newarray: throw (new Error("Not implemented newarray"));
 			case Opcode.wide: throw (new Error("Not implemented wide"));
 			case Opcode.multianewarray: throw (new Error("Not implemented multianewarray"));
@@ -52,26 +68,26 @@ export class InstructionReader {
 			case Opcode.invokedynamic: throw (new Error("Not implemented invokedynamic"));
 			case Opcode.goto_w: case Opcode.jsr_w: throw (new Error("Not implemented branchbyte1_4_body"));
 
-			case Opcode.bipush: return decorateWithStackOffset(new Instruction(offset, op, stackOffset, code.readUInt8()));
-			case Opcode.sipush: return decorateWithStackOffset(new Instruction(offset, op, stackOffset, code.readUInt16BE()));
-			case Opcode.ldc: return decorateWithStackOffset(new Instruction(offset, op, stackOffset, code.readUInt8()));
-			case Opcode.iinc: return decorateWithStackOffset(new Instruction(offset, op, stackOffset, code.readUInt8(), code.readInt8()));
+			case Opcode.bipush: return new Instruction(offset, op, code.readInt8());
+			case Opcode.sipush: return new Instruction(offset, op, code.readUInt16BE());
+			case Opcode.ldc: return new Instruction(offset, op, code.readUInt8());
+			case Opcode.iinc: return new Instruction(offset, op, code.readUInt8(), code.readInt8());
 
 			case Opcode.iload: case Opcode.lload: case Opcode.fload: case Opcode.dload: case Opcode.aload:
 			case Opcode.istore: case Opcode.lstore: case Opcode.fstore: case Opcode.dstore: case Opcode.astore: case Opcode.ret:
-				return decorateWithStackOffset(new Instruction(offset, op, stackOffset, code.readUInt8()));
+				return new Instruction(offset, op, code.readUInt8());
 
 			case Opcode.ldc_w: case Opcode.ldc2_w: case Opcode.getstatic: case Opcode.putstatic:
 			case Opcode.getfield: case Opcode.putfield: case Opcode.new: case Opcode.invokevirtual: case Opcode.invokespecial:
 			case Opcode.invokestatic: case Opcode.anewarray: case Opcode.checkcast: case Opcode.instanceof:
-				return decorateWithStackOffset(new Instruction(offset, op, stackOffset, code.readUInt16BE()));
+				return new Instruction(offset, op, code.readUInt16BE());
 
 			case Opcode.ifeq: case Opcode.ifne: case Opcode.iflt: case Opcode.ifge: case Opcode.ifgt: case Opcode.ifle:
 			case Opcode.if_icmpeq: case Opcode.if_icmpne: case Opcode.if_icmplt: case Opcode.if_icmpge: case Opcode.if_icmpgt: case Opcode.if_icmple:
 			case Opcode.if_acmpeq: case Opcode.if_acmpne: case Opcode.goto: case Opcode.jsr: case Opcode.ifnull: case Opcode.ifnonnull:
-				return decorateWithStackOffset(new Instruction(offset, op, stackOffset, offset + code.readInt16BE()));
+				return new Instruction(offset, op, offset + code.readInt16BE());
 
-			default: return decorateWithStackOffset(new Instruction(offset, op, stackOffset, null));
+			default: return new Instruction(offset, op, null);
 		}
 	}
 }

@@ -7,3 +7,7 @@
 /sample_src/*.iws
 /sample/*.iws
 /sample_src/out
+/sample/*.id0
+/sample/*.id1
+/sample/*.nam
+/sample/*.til

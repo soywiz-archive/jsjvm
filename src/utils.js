@@ -33,6 +33,11 @@ var Stream = (function () {
         this.position += offset;
         return value;
     };
+    Stream.prototype.pad = function (pad) {
+        while ((this.position % pad) != 0) {
+            this.position++;
+        }
+    };
     Stream.prototype.readUInt32BE = function () {
         return this._move(this.buffer.readUInt32BE(this.position), 4);
     };

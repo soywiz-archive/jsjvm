@@ -82,6 +82,7 @@ export class Dynarec implements dynarec_common.Processor {
 		this.body += text + "\n";
 	}
 
+	// @TODO: First convert into gotos and after that try to detect control structures?
 	processFlow(block: InstructionBlock) {
 		var instructions = block.instructions;
 		var startIndex = block.firstIndex(i => i.opcodeInfo.type == OpcodeType.Jump);
@@ -93,6 +94,10 @@ export class Dynarec implements dynarec_common.Processor {
 		var i = instructions[startIndex];
 		var startOffset = i.offset;
 		var jumpOffset = i.param;
+
+		if (i.op == Opcode.lookupswitch) {
+			return this.processLookupSwitch(block, startOffset, i.param);
+		}
 
 		if (jumpOffset > startOffset) { // if/ternary/while
 			var firstBlock = block.sliceOffsets(startOffset, jumpOffset);
@@ -114,6 +119,32 @@ export class Dynarec implements dynarec_common.Processor {
 		} else { // possible do...while?
 			return this.processFlowDoWhile(block, jumpOffset, startOffset);
 		}
+	}
+
+	private processLookupSwitch(block: InstructionBlock, startOffset: number, lookupTable: NumberDictionary<number>) {
+		var startIndex = block.getIndexByOffset(startOffset);
+		var beforeBlock = block.take(startIndex);
+		var invLookupTable = {}; for (var key in lookupTable) {
+			if (!invLookupTable[lookupTable[key]]) invLookupTable[lookupTable[key]] = [];
+			invLookupTable[lookupTable[key]].push(key);
+		}
+		var indices = Object.keys(invLookupTable).sort().map(item => parseInt(item)).map(offset => block.getIndexByOffset(offset));
+		indices.push(block.length);
+
+		this.processBasicBlock(beforeBlock);
+		var condExpression = this.stack.pop();
+
+		this.writeSentence('switch (' + condExpression + ') {\n');
+		for (var n = 0; n < indices.length - 1; n++) {
+			var subblock = block.slice(indices[n], indices[n + 1]);
+			invLookupTable[block.instructions[indices[n]].offset].forEach(key => {
+				this.writeSentence((key == 'default') ? 'default:' : ('case ' + key + ':'));
+			});
+			this.writeSentence(Dynarec._processBlock(this.info, subblock).code);
+		}
+		this.writeSentence('}\n');
+		//console.log(block);
+		//console.log(lookupTable);
 	}
 
 	private processFlowDoWhile(block: InstructionBlock, startOffset: number, endOffset: number) {

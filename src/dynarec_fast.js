@@ -177,6 +177,7 @@ var Dynarec = (function () {
         this.body += text + "\n";
     };
 
+    // @TODO: First convert into gotos and after that try to detect control structures?
     Dynarec.prototype.processFlow = function (block) {
         var instructions = block.instructions;
         var startIndex = block.firstIndex(function (i) {
@@ -190,6 +191,10 @@ var Dynarec = (function () {
         var i = instructions[startIndex];
         var startOffset = i.offset;
         var jumpOffset = i.param;
+
+        if (i.op == 171 /* lookupswitch */) {
+            return this.processLookupSwitch(block, startOffset, i.param);
+        }
 
         if (jumpOffset > startOffset) {
             var firstBlock = block.sliceOffsets(startOffset, jumpOffset);
@@ -211,6 +216,39 @@ var Dynarec = (function () {
         } else {
             return this.processFlowDoWhile(block, jumpOffset, startOffset);
         }
+    };
+
+    Dynarec.prototype.processLookupSwitch = function (block, startOffset, lookupTable) {
+        var _this = this;
+        var startIndex = block.getIndexByOffset(startOffset);
+        var beforeBlock = block.take(startIndex);
+        var invLookupTable = {};
+        for (var key in lookupTable) {
+            if (!invLookupTable[lookupTable[key]])
+                invLookupTable[lookupTable[key]] = [];
+            invLookupTable[lookupTable[key]].push(key);
+        }
+        var indices = Object.keys(invLookupTable).sort().map(function (item) {
+            return parseInt(item);
+        }).map(function (offset) {
+            return block.getIndexByOffset(offset);
+        });
+        indices.push(block.length);
+
+        this.processBasicBlock(beforeBlock);
+        var condExpression = this.stack.pop();
+
+        this.writeSentence('switch (' + condExpression + ') {\n');
+        for (var n = 0; n < indices.length - 1; n++) {
+            var subblock = block.slice(indices[n], indices[n + 1]);
+            invLookupTable[block.instructions[indices[n]].offset].forEach(function (key) {
+                _this.writeSentence((key == 'default') ? 'default:' : ('case ' + key + ':'));
+            });
+            this.writeSentence(Dynarec._processBlock(this.info, subblock).code);
+        }
+        this.writeSentence('}\n');
+        //console.log(block);
+        //console.log(lookupTable);
     };
 
     Dynarec.prototype.processFlowDoWhile = function (block, startOffset, endOffset) {
