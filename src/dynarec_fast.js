@@ -7,6 +7,10 @@
 var types = require('./types');
 
 var dynarec_common = require('./dynarec_common');
+var opcodes = require('./opcodes');
+
+var OpcodeType = opcodes.OpcodeType;
+var Opcode = opcodes.Opcode;
 
 var Node = (function () {
     function Node() {
@@ -90,6 +94,20 @@ var NodeBinop = (function (_super) {
     return NodeBinop;
 })(Node);
 
+var NodeTernary = (function (_super) {
+    __extends(NodeTernary, _super);
+    function NodeTernary(cond, nodeIf, nodeElse) {
+        _super.call(this);
+        this.cond = cond;
+        this.nodeIf = nodeIf;
+        this.nodeElse = nodeElse;
+    }
+    NodeTernary.prototype.toString = function () {
+        return '((' + this.cond.toString() + ') ? (' + this.nodeIf.toString() + ') : (' + this.nodeElse.toString() + '))';
+    };
+    return NodeTernary;
+})(Node);
+
 var NodeUnop = (function (_super) {
     __extends(NodeUnop, _super);
     function NodeUnop(type, left, l, r) {
@@ -121,39 +139,94 @@ var NodeCall = (function (_super) {
 })(Node);
 
 var Dynarec = (function () {
-    function Dynarec(pool, methodName, methodType, max_stack, max_locals, is_static) {
-        this.pool = pool;
-        this.methodName = methodName;
-        this.methodType = methodType;
-        this.max_stack = max_stack;
-        this.max_locals = max_locals;
-        this.is_static = is_static;
+    function Dynarec(info) {
+        this.info = info;
         this.stack = [];
         this.sentences = [];
         this.body = '"use strict";\n';
     }
+    Dynarec.processMethod = function (info, instructionBlock) {
+        var output = Dynarec._processBlock(info, instructionBlock);
+
+        //console.log('///////////////////////////// ', this.stack.length);
+        if (output.stack.length)
+            console.warn('stack length not zero at the end of the function! Probably a bug! ' + info.methodName + ' : stack: ' + JSON.stringify(output.stack));
+        return output;
+    };
+
+    Dynarec._processBlock = function (info, instructionBlock) {
+        if (instructionBlock == null)
+            return null;
+
+        var dynarec = new Dynarec(info);
+        dynarec.process(instructionBlock);
+
+        return { code: dynarec.body, stack: dynarec.stack };
+    };
+
     Dynarec.prototype.writeSentence = function (text) {
         this.body += text + "\n";
     };
 
-    Dynarec.prototype.process = function (instructions) {
-        var _this = this;
-        //console.log('-----------------------------', this.methodName);
-        instructions.forEach(function (i) {
-            _this.processOne(i);
-        });
+    Dynarec.prototype.process = function (instructionBlock) {
+        var instructions = instructionBlock.instructions;
 
-        //console.log('///////////////////////////// ', this.stack.length);
-        if (this.stack.length)
-            console.warn('stack length not zero at the end of the function! Probably a bug!');
+        for (var n = 0; n < instructions.length; n++) {
+            var i = instructions[n];
+            if (i.opcodeInfo.type == 1 /* Jump */) {
+                var jumpCondition = new NodeUnop(types.Any, this.processOne(i), '!', '');
+
+                if (i.param > i.offset) {
+                    var blockIfStart = i.offset;
+                    var blockElseStart = i.param;
+                    var blockEndStart = -1;
+
+                    var blockIf = instructionBlock.sliceOffsets(blockIfStart, blockElseStart).skip(1);
+                    var blockElse = null;
+
+                    // Has goto at the end of the block.
+                    if (blockIf.last.op == 167 /* goto */) {
+                        blockEndStart = blockIf.last.param;
+                        blockIf = blockIf.rstrip(1);
+                        blockElse = instructionBlock.sliceOffsets(blockElseStart, blockEndStart);
+                    } else {
+                        blockEndStart = blockElseStart;
+                        //blockElse = new Block
+                    }
+
+                    var blockIfResult = Dynarec._processBlock(this.info, blockIf);
+                    var blockElseResult = Dynarec._processBlock(this.info, blockElse);
+
+                    //console.log('if:' + blockIfResult.stack.length);
+                    //console.log('else:' + blockElseResult.stack.length);
+                    // Ternary operator
+                    if ((blockIfResult) && (blockElseResult) && (blockIfResult.stack.length == 1) && (blockElseResult.stack.length == 1)) {
+                        this.stack.push(new NodeTernary(jumpCondition, blockIfResult.stack[0], blockElseResult.stack[0]));
+
+                        //console.log(this.stack);
+                        n = instructionBlock.getIndexByOffset(blockEndStart) - 1;
+                    } else {
+                        if (blockIfResult && blockIfResult.stack.length)
+                            throw (new Error("if with stack mismatch! : " + blockIfResult.stack.join(',')));
+                        if (blockElseResult && blockElseResult.stack.length)
+                            throw (new Error("else with stack mismatch! : " + blockElseResult.stack.join(',')));
+                        throw (new Error("if not implemented! " + blockIf.instructions.length));
+                    }
+                } else {
+                    throw (new Error("while not implemented!"));
+                }
+            } else {
+                this.processOne(i);
+            }
+        }
     };
 
     Dynarec.prototype.processOne = function (i) {
-        dynarec_common.DynarecProcessor.processOne(this, this.pool, i);
+        return dynarec_common.DynarecProcessor.processOne(this, this.info.pool, i);
     };
 
     Dynarec.prototype.getref = function (index) {
-        var argLength = this.methodType.arguments.length;
+        var argLength = this.info.methodType.arguments.length;
         if (index < argLength) {
             return new NodeRef('arg' + (index) + '');
         } else {
@@ -200,14 +273,14 @@ var Dynarec = (function () {
     };
 
     Dynarec.prototype.ldc = function (index, wide) {
-        this.stack.push(new NodeValue(this.pool.getValue(index)));
+        this.stack.push(new NodeValue(this.info.pool.getValue(index)));
     };
 
     Dynarec.prototype.invoke = function (invokeType, methodInfo) {
-        var className = methodInfo.className(this.pool);
-        var name = methodInfo.name(this.pool);
-        var type = methodInfo.type(this.pool);
-        var demangledType = types.demangleMethod(methodInfo.type(this.pool));
+        var className = methodInfo.className(this.info.pool);
+        var name = methodInfo.name(this.info.pool);
+        var type = methodInfo.type(this.info.pool);
+        var demangledType = types.demangleMethod(methodInfo.type(this.info.pool));
         var argCount = demangledType.arguments.length;
         var args = [];
 
@@ -225,7 +298,7 @@ var Dynarec = (function () {
     };
 
     Dynarec.prototype.getstatic = function (methodInfo) {
-        this.stack.push(new NodeRef(methodInfo.name(this.pool)));
+        this.stack.push(new NodeRef(methodInfo.name(this.info.pool)));
     };
 
     Dynarec.prototype._binop = function (type, op) {
@@ -235,20 +308,18 @@ var Dynarec = (function () {
     };
 
     Dynarec.prototype.ifcond = function (op, offset) {
-        var a1 = this.stack.pop();
-
-        //var a2 = this.stack.pop();
-        this.writeSentence('if (' + a1.toString() + op + ' ' + 0 + ') goto ' + offset + ';');
+        this.stack.push(new NodeValue(0));
+        return this.ifcond2(op, offset);
     };
 
     Dynarec.prototype.ifcond2 = function (op, offset) {
         var a2 = this.stack.pop();
         var a1 = this.stack.pop();
-        this.writeSentence('if (' + a1.toString() + op + a2.toString() + ') goto ' + offset + ';');
+        return new NodeBinop(new types.Integer(), a1, op, a2);
     };
 
     Dynarec.prototype.goto = function (offset) {
-        this.writeSentence('goto L_' + offset + ';');
+        return new NodeValue(1);
     };
 
     Dynarec.prototype.iinc = function (local, increment) {
@@ -273,7 +344,7 @@ var Dynarec = (function () {
     };
 
     Dynarec.prototype._new = function (clazz) {
-        this.call('new ' + clazz.name(this.pool), 0);
+        this.call('new ' + clazz.name(this.info.pool), 0);
     };
 
     Dynarec.prototype.dup = function () {

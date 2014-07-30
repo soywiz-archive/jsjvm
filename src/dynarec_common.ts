@@ -39,8 +39,55 @@ export interface Processor {
 	dup();
 }
 
-class InstructionBlock {
+export class InstructionBlock {
+	private indicesByOffset = null;
+
 	constructor(public instructions: instructions.Instruction[]) {
+	}
+
+	get length() {
+		return this.instructions.length;
+	}
+
+	get first() {
+		return this.instructions[0];
+	}
+
+	get last() {
+		return this.instructions[this.length - 1];
+	}
+
+	rstrip(count: number) {
+		return this.take(this.length - count);
+	}
+
+	skip(count: number) {
+		return new InstructionBlock(this.instructions.slice(count));
+	}
+
+	take(count: number) {
+		return new InstructionBlock(this.instructions.slice(0, count));
+	}
+
+	slice(startIndex: number, endIndex: number) {
+		return new InstructionBlock(this.instructions.slice(startIndex, endIndex));
+	}
+
+	sliceOffsets(startOffset: number, endOffset: number) {
+		return this.slice(this.getIndexByOffset(startOffset), this.getIndexByOffset(endOffset));
+	}
+
+	getIndexByOffset(offset: number) {
+		if (!this.indicesByOffset) {
+			this.indicesByOffset = {};
+			for (var n = 0; n < this.instructions.length; n++) {
+				this.indicesByOffset[this.instructions[n].offset] = n;
+			}
+		}
+
+		var index = this.indicesByOffset[offset];
+		if (index === undefined) throw (new Error("Can't find offset " + offset));
+		return index;
 	}
 }
 
@@ -57,7 +104,7 @@ export class DynarecProcessor {
 		//console.log('stackOffset:', i.stackOffset);
 
 		var op = i.op, param = i.param, param2 = i.param2;
-		//console.log(i);
+		//console.log(JSON.stringify(i));
 		switch (op) {
 			case Opcode.aload_0: case Opcode.aload_1: case Opcode.aload_2: case Opcode.aload_3: return processor._load(new types.Ref, op - Opcode.aload_0);
 			case Opcode.iload_0: case Opcode.iload_1: case Opcode.iload_2: case Opcode.iload_3: return processor._load(new types.Integer, op - Opcode.iload_0);
@@ -159,4 +206,13 @@ export class DynarecProcessor {
 				throw (new Error("Not implemented opcode " + i.name + '(' + i.op + ')' + "!"));
 		}
 	}
+}
+
+export class DynarecInfo {
+	constructor(public pool: constantpool.ConstantPool, public methodName: string, public methodType: types.Method, public max_stack: number, public max_locals: number, public is_static: boolean) {
+	}
+}
+
+export interface DynarecOuput {
+	code: string;
 }

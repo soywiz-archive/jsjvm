@@ -2,7 +2,11 @@
 
 var utils = require('./utils');
 
+var dynarec_common = require('./dynarec_common');
+
 var dynarec_fast = require('./dynarec_fast');
+
+var InstructionBlock = dynarec_common.InstructionBlock;
 
 var InstructionReader = instructions.InstructionReader;
 
@@ -19,20 +23,22 @@ function readInstructions(pool, codeStream) {
 exports.readInstructions = readInstructions;
 
 function getFunctionCode(pool, methodName, methodType, max_stack, max_locals, is_static, instructions) {
-    var dynarec = new dynarec_fast.Dynarec(pool, methodName, methodType, max_stack, max_locals, is_static);
-    dynarec.process(instructions);
+    var output = dynarec_fast.Dynarec.processMethod(new dynarec_common.DynarecInfo(pool, methodName, methodType, max_stack, max_locals, is_static), new InstructionBlock(instructions));
+
     var func;
 
     try  {
         func = Function.apply(null, utils.range(methodType.arguments.length).map(function (index) {
             return 'arg' + index;
-        }).concat([dynarec.body]));
+        }).concat([output.code]));
     } catch (e) {
-        console.info(dynarec.body);
+        console.info(methodName + ':' + output.code);
         console.error(e);
         func = null;
     }
-    return { func: func, body: dynarec.body };
+
+    //console.info('function ' + methodName + '() { ' + output.code + '}');
+    return { func: func, body: output.code };
 }
 exports.getFunctionCode = getFunctionCode;
 //# sourceMappingURL=dynarec.js.map

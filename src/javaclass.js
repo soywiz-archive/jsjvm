@@ -96,7 +96,7 @@ var JavaClass = (function () {
                 continue;
             if (type && method.methodTypeStr != type)
                 continue;
-            return method;
+            return method.prepare();
         }
         return null;
     };
@@ -138,9 +138,13 @@ var JavaMethod = (function () {
                 _this.bodydata = attribute.data;
             }
         });
-
-        this._createFunction();
     }
+    JavaMethod.prototype.prepare = function () {
+        if (!this.func)
+            this._createFunction();
+        return this;
+    };
+
     JavaMethod.prototype._createFunction = function () {
         //console.log('Code!');
         var stream = new Stream(this.bodydata);

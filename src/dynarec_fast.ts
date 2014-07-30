@@ -3,9 +3,13 @@ import types = require('./types');
 import constantpool = require('./constantpool');
 import instructions = require('./instructions');
 import dynarec_common = require('./dynarec_common');
+import opcodes = require('./opcodes');
 
 import Instruction = instructions.Instruction;
+import InstructionBlock = dynarec_common.InstructionBlock;
 import ConstantPool = constantpool.ConstantPool;
+import OpcodeType = opcodes.OpcodeType;
+import Opcode = opcodes.Opcode;
 
 class Node { toString() { return ''; } }
 class NodeRef extends Node { constructor(public name: string) { super(); } toString() { return this.name; } }
@@ -30,6 +34,13 @@ class NodeBinop extends Node {
 	}
 }
 
+class NodeTernary extends Node {
+	constructor(public cond: Node, public nodeIf: Node, public nodeElse: Node) { super(); }
+	toString() {
+		return '((' + this.cond.toString() + ') ? (' + this.nodeIf.toString() + ') : (' + this.nodeElse.toString() + '))';
+	}
+}
+
 class NodeUnop extends Node {
 	constructor(public type: types.Any, public left: Node, public l: string, public r: string) { super(); }
 	toString() { return '(' + this.l + this.left.toString() + this.r + ')'; }
@@ -41,7 +52,23 @@ class NodeCall extends Node {
 }
 
 export class Dynarec implements dynarec_common.Processor {
-	constructor(public pool: ConstantPool, public methodName: string, public methodType: types.Method, public max_stack: number, public max_locals: number, public is_static: boolean) {
+	constructor(private info: dynarec_common.DynarecInfo) {
+	}
+
+	static processMethod(info: dynarec_common.DynarecInfo, instructionBlock: InstructionBlock): dynarec_common.DynarecOuput {
+		var output = Dynarec._processBlock(info, instructionBlock);
+		//console.log('///////////////////////////// ', this.stack.length);
+		if (output.stack.length) console.warn('stack length not zero at the end of the function! Probably a bug! ' + info.methodName + ' : stack: ' + JSON.stringify(output.stack));
+		return output;
+	}
+
+	private static _processBlock(info: dynarec_common.DynarecInfo, instructionBlock: InstructionBlock) {
+		if (instructionBlock == null) return null;
+
+		var dynarec = new Dynarec(info);
+		dynarec.process(instructionBlock);
+
+		return { code: dynarec.body, stack: dynarec.stack };
 	}
 
 	private stack = <Node[]>[];
@@ -52,21 +79,67 @@ export class Dynarec implements dynarec_common.Processor {
 		this.body += text + "\n";
 	}
 
-	process(instructions: Instruction[]) {
+	process(instructionBlock: InstructionBlock) {
+		var instructions = instructionBlock.instructions;
 		//console.log('-----------------------------', this.methodName);
-		instructions.forEach(i => {
-			this.processOne(i);
-		});
-		//console.log('///////////////////////////// ', this.stack.length);
-		if (this.stack.length) console.warn('stack length not zero at the end of the function! Probably a bug!');
+		for (var n = 0; n < instructions.length; n++) {
+			var i = instructions[n];
+			if (i.opcodeInfo.type == OpcodeType.Jump) {
+				var jumpCondition = new NodeUnop(types.Any, <Node>this.processOne(i), '!', '');
+
+				if (i.param > i.offset) { // if
+					var blockIfStart = i.offset;
+					var blockElseStart = i.param;
+					var blockEndStart = -1;
+
+					var blockIf = instructionBlock.sliceOffsets(blockIfStart, blockElseStart).skip(1);
+					var blockElse = null;
+
+					// Has goto at the end of the block.
+					if (blockIf.last.op == Opcode.goto) {
+						blockEndStart = blockIf.last.param;
+						blockIf = blockIf.rstrip(1);
+						blockElse = instructionBlock.sliceOffsets(blockElseStart, blockEndStart);
+					} else {
+						blockEndStart = blockElseStart;
+						//blockElse = new Block
+					}
+
+					var blockIfResult = Dynarec._processBlock(this.info, blockIf);
+					var blockElseResult = Dynarec._processBlock(this.info, blockElse);
+
+					//console.log('if:' + blockIfResult.stack.length);
+					//console.log('else:' + blockElseResult.stack.length);
+
+					// Ternary operator
+					if ((blockIfResult) && (blockElseResult) && (blockIfResult.stack.length == 1) && (blockElseResult.stack.length == 1)) {
+						this.stack.push(new NodeTernary(jumpCondition, blockIfResult.stack[0], blockElseResult.stack[0]));
+
+						//console.log(this.stack);
+
+						n = instructionBlock.getIndexByOffset(blockEndStart) - 1;
+					}
+					// Normal if.
+					else {
+						if (blockIfResult && blockIfResult.stack.length) throw (new Error("if with stack mismatch! : " + blockIfResult.stack.join(',')));
+						if (blockElseResult && blockElseResult.stack.length) throw (new Error("else with stack mismatch! : " + blockElseResult.stack.join(',')));
+						throw (new Error("if not implemented! " + blockIf.instructions.length));
+					}
+				} else { // while
+					throw (new Error("while not implemented!"));
+				}
+			} else {
+				this.processOne(i);
+			}
+		}
 	}
 
 	private processOne(i: Instruction) {
-		dynarec_common.DynarecProcessor.processOne(this, this.pool, i);
+		return dynarec_common.DynarecProcessor.processOne(this, this.info.pool, i);
 	}
 
 	private getref(index: number) {
-		var argLength = this.methodType.arguments.length;
+		var argLength = this.info.methodType.arguments.length;
 		if (index < argLength) {
 			return new NodeRef('arg' + (index) + '');
 		} else {
@@ -112,14 +185,14 @@ export class Dynarec implements dynarec_common.Processor {
 	}
 
 	ldc(index: number, wide: boolean) {
-		this.stack.push(new NodeValue(this.pool.getValue(index)));
+		this.stack.push(new NodeValue(this.info.pool.getValue(index)));
 	}
 
 	invoke(invokeType: dynarec_common.InvokeType, methodInfo: constantpool.JavaConstantMethodReference) {
-		var className = methodInfo.className(this.pool);
-		var name = methodInfo.name(this.pool);
-		var type = methodInfo.type(this.pool)
-		var demangledType = types.demangleMethod(methodInfo.type(this.pool));
+		var className = methodInfo.className(this.info.pool);
+		var name = methodInfo.name(this.info.pool);
+		var type = methodInfo.type(this.info.pool)
+		var demangledType = types.demangleMethod(methodInfo.type(this.info.pool));
 		var argCount = demangledType.arguments.length;
 		var args = <Node[]>[];
 
@@ -138,7 +211,7 @@ export class Dynarec implements dynarec_common.Processor {
 		}
 	}
 
-	getstatic(methodInfo: constantpool.JavaConstantFieldReference) { this.stack.push(new NodeRef(methodInfo.name(this.pool))); }
+	getstatic(methodInfo: constantpool.JavaConstantFieldReference) { this.stack.push(new NodeRef(methodInfo.name(this.info.pool))); }
 
 	_binop(type: types.Any, op: string) {
 		var right = this.stack.pop();
@@ -147,19 +220,18 @@ export class Dynarec implements dynarec_common.Processor {
 	}
 
 	ifcond(op: string, offset: number) {
-		var a1 = this.stack.pop();
-		//var a2 = this.stack.pop();
-		this.writeSentence('if (' + a1.toString() + op + ' ' + 0 + ') goto ' + offset + ';');
+		this.stack.push(new NodeValue(0));
+		return this.ifcond2(op, offset);
 	}
 
-	ifcond2(op: string, offset: number) {
+	ifcond2(op: string, offset: number): any {
 		var a2 = this.stack.pop();
 		var a1 = this.stack.pop();
-		this.writeSentence('if (' + a1.toString() + op + a2.toString() + ') goto ' + offset + ';');
+		return new NodeBinop(new types.Integer(), a1, op, a2);
 	}
 
-	goto(offset: any) {
-		this.writeSentence('goto L_' + offset + ';');
+	goto(offset: any): any {
+		return new NodeValue(1);
 	}
 
 	iinc(local: number, increment: number) {
@@ -184,7 +256,7 @@ export class Dynarec implements dynarec_common.Processor {
 	}
 
 	_new(clazz: constantpool.JavaConstantClassReference) {
-		this.call('new ' + clazz.name(this.pool), 0);
+		this.call('new ' + clazz.name(this.info.pool), 0);
 	}
 
 	dup() {

@@ -9,6 +9,7 @@ import dynarec_fast = require('./dynarec_fast');
 
 import InvokeType = dynarec_common.InvokeType;
 import Processor = dynarec_common.Processor;
+import InstructionBlock = dynarec_common.InstructionBlock;
 import Opcode = opcodes.Opcode;
 import Instruction = instructions.Instruction;
 import InstructionReader = instructions.InstructionReader;
@@ -27,19 +28,18 @@ export function readInstructions(pool: ConstantPool,codeStream: utils.Stream) {
 }
 
 export function getFunctionCode(pool: ConstantPool, methodName: string, methodType: types.Method, max_stack: number, max_locals: number, is_static: boolean, instructions: Instruction[]) {
+	var output = dynarec_fast.Dynarec.processMethod(new dynarec_common.DynarecInfo(pool, methodName, methodType, max_stack, max_locals, is_static), new InstructionBlock(instructions));
 
-	var dynarec = new dynarec_fast.Dynarec(pool, methodName, methodType, max_stack, max_locals, is_static);
-	dynarec.process(instructions);
 	var func;
 
-	//console.log(dynarec.body);
-
 	try {
-		func = Function.apply(null, utils.range(methodType.arguments.length).map(index => 'arg' + index).concat([dynarec.body]));
+		func = Function.apply(null, utils.range(methodType.arguments.length).map(index => 'arg' + index).concat([output.code]));
 	} catch (e) {
-		console.info(dynarec.body);
+		console.info(methodName + ':' + output.code);
 		console.error(e);
 		func = null;
 	}
-	return { func: func, body: dynarec.body };
+
+	//console.info('function ' + methodName + '() { ' + output.code + '}');
+	return { func: func, body: output.code };
 }

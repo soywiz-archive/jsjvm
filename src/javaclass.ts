@@ -61,7 +61,7 @@ export class JavaClass {
 			var method = this.methods[n];
 			if (method.name != name) continue;
 			if (type && method.methodTypeStr != type) continue;
-			return method;
+			return method.prepare();
 		}
 		return null;
 	}
@@ -97,8 +97,11 @@ export class JavaMethod {
 				this.bodydata = attribute.data;
 			}
 		});
+	}
 
-		this._createFunction();
+	prepare() {
+		if (!this.func) this._createFunction();
+		return this;
 	}
 
 	private _createFunction() {

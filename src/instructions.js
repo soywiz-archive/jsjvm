@@ -13,6 +13,13 @@ var Instruction = (function () {
         this.param2 = param2;
         this.name = Opcode[op];
     }
+    Object.defineProperty(Instruction.prototype, "opcodeInfo", {
+        get: function () {
+            return opcodes.opcodeInfoListByOpcode[this.op];
+        },
+        enumerable: true,
+        configurable: true
+    });
     return Instruction;
 })();
 exports.Instruction = Instruction;

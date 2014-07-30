@@ -3,12 +3,17 @@ import types = require('./types');
 import constantpool = require('./constantpool');
 import utils = require('./utils');
 import Opcode = opcodes.Opcode;
+import OpcodeInfo = opcodes.OpcodeInfo;
 
 export class Instruction {
 	public name: string;
 
 	constructor(public offset: number, public op: Opcode, public stackOffset: number, public param: any, public param2: any = null) {
 		this.name = Opcode[op];
+	}
+
+	get opcodeInfo(): OpcodeInfo {
+		return opcodes.opcodeInfoListByOpcode[this.op];
 	}
 }
 

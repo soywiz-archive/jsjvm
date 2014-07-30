@@ -4,6 +4,14 @@ var jsjvm = require('../src/jsjvm');
 
 describe('Bits.class', function () {
     var BitsClass = jsjvm.JavaClass.fromStream(new jsjvm.Stream(fs.readFileSync(__dirname + '/Bits.class')));
+
+    it('getBool', function () {
+        var getBoolean = BitsClass.getMethod('getBoolean').func;
+        assert.equal(0, getBoolean(new Uint8Array([0]), 0));
+        assert.equal(1, getBoolean(new Uint8Array([2]), 0));
+        assert.equal(1, getBoolean(new Uint8Array([-1]), 0));
+    });
+
     it('getChar', function () {
         var getChar = BitsClass.getMethod('getChar').func;
         var array = new Uint8Array([1, 2, 3]);

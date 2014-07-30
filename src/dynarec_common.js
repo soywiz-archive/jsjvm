@@ -14,9 +14,68 @@ var InvokeType = exports.InvokeType;
 var InstructionBlock = (function () {
     function InstructionBlock(instructions) {
         this.instructions = instructions;
+        this.indicesByOffset = null;
     }
+    Object.defineProperty(InstructionBlock.prototype, "length", {
+        get: function () {
+            return this.instructions.length;
+        },
+        enumerable: true,
+        configurable: true
+    });
+
+    Object.defineProperty(InstructionBlock.prototype, "first", {
+        get: function () {
+            return this.instructions[0];
+        },
+        enumerable: true,
+        configurable: true
+    });
+
+    Object.defineProperty(InstructionBlock.prototype, "last", {
+        get: function () {
+            return this.instructions[this.length - 1];
+        },
+        enumerable: true,
+        configurable: true
+    });
+
+    InstructionBlock.prototype.rstrip = function (count) {
+        return this.take(this.length - count);
+    };
+
+    InstructionBlock.prototype.skip = function (count) {
+        return new InstructionBlock(this.instructions.slice(count));
+    };
+
+    InstructionBlock.prototype.take = function (count) {
+        return new InstructionBlock(this.instructions.slice(0, count));
+    };
+
+    InstructionBlock.prototype.slice = function (startIndex, endIndex) {
+        return new InstructionBlock(this.instructions.slice(startIndex, endIndex));
+    };
+
+    InstructionBlock.prototype.sliceOffsets = function (startOffset, endOffset) {
+        return this.slice(this.getIndexByOffset(startOffset), this.getIndexByOffset(endOffset));
+    };
+
+    InstructionBlock.prototype.getIndexByOffset = function (offset) {
+        if (!this.indicesByOffset) {
+            this.indicesByOffset = {};
+            for (var n = 0; n < this.instructions.length; n++) {
+                this.indicesByOffset[this.instructions[n].offset] = n;
+            }
+        }
+
+        var index = this.indicesByOffset[offset];
+        if (index === undefined)
+            throw (new Error("Can't find offset " + offset));
+        return index;
+    };
     return InstructionBlock;
 })();
+exports.InstructionBlock = InstructionBlock;
 
 var DynarecProcessor = (function () {
     function DynarecProcessor() {
@@ -250,4 +309,17 @@ var DynarecProcessor = (function () {
     return DynarecProcessor;
 })();
 exports.DynarecProcessor = DynarecProcessor;
+
+var DynarecInfo = (function () {
+    function DynarecInfo(pool, methodName, methodType, max_stack, max_locals, is_static) {
+        this.pool = pool;
+        this.methodName = methodName;
+        this.methodType = methodType;
+        this.max_stack = max_stack;
+        this.max_locals = max_locals;
+        this.is_static = is_static;
+    }
+    return DynarecInfo;
+})();
+exports.DynarecInfo = DynarecInfo;
 //# sourceMappingURL=dynarec_common.js.map
