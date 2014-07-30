@@ -241,6 +241,12 @@ var DynarecProcessor = (function () {
                 return processor._binop(new types.Integer, '+');
             case 100 /* isub */:
                 return processor._binop(new types.Integer, '-');
+            case 108 /* idiv */:
+                return processor._binop(new types.Integer, '/');
+            case 112 /* irem */:
+                return processor._binop(new types.Integer, '%');
+            case 104 /* imul */:
+                return processor._binop(new types.Integer, '*');
             case 126 /* iand */:
                 return processor._binop(new types.Integer, '&');
             case 120 /* ishl */:
@@ -253,7 +259,13 @@ var DynarecProcessor = (function () {
             case 97 /* ladd */:
                 return processor._binop(new types.Long, '+');
             case 101 /* lsub */:
-                return processor._binop(new types.Long, '+');
+                return processor._binop(new types.Long, '-');
+            case 109 /* ldiv */:
+                return processor._binop(new types.Long, '/');
+            case 113 /* lrem */:
+                return processor._binop(new types.Long, '%');
+            case 105 /* lmul */:
+                return processor._binop(new types.Long, '*');
             case 127 /* land */:
                 return processor._binop(new types.Long, '&');
             case 121 /* lshl */:
@@ -263,10 +275,15 @@ var DynarecProcessor = (function () {
             case 125 /* lushr */:
                 return processor._binop(new types.Long, '>>>');
 
+            case 46 /* iaload */:
+                return processor._aload(new types.Integer);
             case 51 /* baload */:
-                return processor.baload();
+                return processor._aload(new types.Byte);
+
+            case 79 /* iastore */:
+                return processor._astore(new types.Integer);
             case 84 /* bastore */:
-                return processor.bastore();
+                return processor._astore(new types.Byte);
 
             case 190 /* arraylength */:
                 return processor.arraylength();

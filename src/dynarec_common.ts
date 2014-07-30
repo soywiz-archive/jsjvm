@@ -31,8 +31,8 @@ export interface Processor {
 	goto(offset: any);
 
 	iinc(index: number, offset: number);
-	baload();
-	bastore();
+	_aload(type: types.Any);
+	_astore(type: types.Any);
 
 	arraylength();
 	_new(clazz: constantpool.JavaConstantClassReference);
@@ -178,20 +178,29 @@ export class DynarecProcessor {
 
 			case Opcode.iadd: return processor._binop(new types.Integer, '+');
 			case Opcode.isub: return processor._binop(new types.Integer, '-');
+			case Opcode.idiv: return processor._binop(new types.Integer, '/');
+			case Opcode.irem: return processor._binop(new types.Integer, '%');
+			case Opcode.imul: return processor._binop(new types.Integer, '*');
 			case Opcode.iand: return processor._binop(new types.Integer, '&');
 			case Opcode.ishl: return processor._binop(new types.Integer, '<<');
 			case Opcode.ishr: return processor._binop(new types.Integer, '>>');
 			case Opcode.iushr: return processor._binop(new types.Integer, '>>>');
 
 			case Opcode.ladd: return processor._binop(new types.Long, '+');
-			case Opcode.lsub: return processor._binop(new types.Long, '+');
+			case Opcode.lsub: return processor._binop(new types.Long, '-');
+			case Opcode.ldiv: return processor._binop(new types.Long, '/');
+			case Opcode.lrem: return processor._binop(new types.Long, '%');
+			case Opcode.lmul: return processor._binop(new types.Long, '*');
 			case Opcode.land: return processor._binop(new types.Long, '&');
 			case Opcode.lshl: return processor._binop(new types.Long, '<<');
 			case Opcode.lshr: return processor._binop(new types.Long, '>>');
 			case Opcode.lushr: return processor._binop(new types.Long, '>>>');
 
-			case Opcode.baload: return processor.baload();
-			case Opcode.bastore: return processor.bastore();
+			case Opcode.iaload: return processor._aload(new types.Integer);
+			case Opcode.baload: return processor._aload(new types.Byte);
+
+			case Opcode.iastore: return processor._astore(new types.Integer);
+			case Opcode.bastore: return processor._astore(new types.Byte);
 
 			case Opcode.arraylength: return processor.arraylength();
 			case Opcode.new: return processor._new(pool.getClassReference(param));

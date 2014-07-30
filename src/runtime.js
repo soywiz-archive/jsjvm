@@ -1,18 +1,21 @@
-﻿var Convert = (function () {
-    function Convert() {
+﻿var JavaRuntime = (function () {
+    function JavaRuntime() {
     }
-    Convert.CastI = function (value) {
+    JavaRuntime.CastI = function (value) {
         return value | 0;
     };
-    Convert.ConvertIC = function (value) {
+    JavaRuntime.ConvertIC = function (value) {
         return (value & 0xFFFF) >>> 0;
     };
-    Convert.ConvertIS = function (value) {
+    JavaRuntime.ConvertIS = function (value) {
         return (value & 0xFFFF) | 0;
     };
-    return Convert;
+    JavaRuntime.arraylength = function (value) {
+        return value.length;
+    };
+    return JavaRuntime;
 })();
-exports.Convert = Convert;
+exports.JavaRuntime = JavaRuntime;
 
-global['Convert'] = Convert;
+global['JavaRuntime'] = JavaRuntime;
 //# sourceMappingURL=runtime.js.map

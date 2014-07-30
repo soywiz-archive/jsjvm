@@ -74,7 +74,7 @@ var NodeCast = (function (_super) {
         this.node = node;
     }
     NodeCast.prototype.toString = function () {
-        return 'Convert.Cast' + this.type.mangled + '(' + this.node.toString() + '|0' + ')';
+        return 'JavaRuntime.Cast' + this.type.mangled + '(' + this.node.toString() + '|0' + ')';
     };
     return NodeCast;
 })(Node);
@@ -360,7 +360,7 @@ var Dynarec = (function () {
     };
 
     Dynarec.prototype.convert = function (from, to) {
-        this.stack.push(new NodeCall('Convert.Convert' + from.mangled + to.mangled, [this.stack.pop()]));
+        this.stack.push(new NodeCall('JavaRuntime.Convert' + from.mangled + to.mangled, [this.stack.pop()]));
     };
 
     Dynarec.prototype._const = function (type, value) {
@@ -430,13 +430,13 @@ var Dynarec = (function () {
         this.writeSentence(this.getref(local).toString() + ' = ' + this.getref(local).toString() + ' + ' + increment);
     };
 
-    Dynarec.prototype.baload = function () {
+    Dynarec.prototype._aload = function (type) {
         var index = this.stack.pop();
         var ref = this.stack.pop();
         this.stack.push(new NodeArrayAccess(ref, index));
     };
 
-    Dynarec.prototype.bastore = function () {
+    Dynarec.prototype._astore = function (type) {
         var value = this.stack.pop();
         var index = this.stack.pop();
         var ref = this.stack.pop();
@@ -444,7 +444,7 @@ var Dynarec = (function () {
     };
 
     Dynarec.prototype.arraylength = function () {
-        this.stack.push(new NodeCall('Convert.arraylength', [this.stack.pop()]));
+        this.stack.push(new NodeCall('JavaRuntime.arraylength', [this.stack.pop()]));
     };
 
     Dynarec.prototype._new = function (clazz) {

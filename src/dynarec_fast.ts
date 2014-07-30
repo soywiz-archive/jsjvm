@@ -22,7 +22,7 @@ class NodeArrayAccess extends Node {
 
 class NodeCast extends Node {
 	constructor(public type: types.Any, public node: Node) { super(); }
-	toString() { return 'Convert.Cast' + this.type.mangled + '(' + this.node.toString() + '|0' + ')'; }
+	toString() { return 'JavaRuntime.Cast' + this.type.mangled + '(' + this.node.toString() + '|0' + ')'; }
 }
 
 class NodeBinop extends Node {
@@ -264,7 +264,7 @@ export class Dynarec implements dynarec_common.Processor {
 	}
 
 	convert(from: types.Any, to: types.Any) {
-		this.stack.push(new NodeCall('Convert.Convert' + from.mangled + to.mangled, [this.stack.pop()]));
+		this.stack.push(new NodeCall('JavaRuntime.Convert' + from.mangled + to.mangled, [this.stack.pop()]));
 	}
 
 	_const(type: types.Any, value: number) {
@@ -334,13 +334,13 @@ export class Dynarec implements dynarec_common.Processor {
 		this.writeSentence(this.getref(local).toString() + ' = ' + this.getref(local).toString() + ' + ' + increment);
 	}
 
-	baload() {
+	_aload(type: types.Any) {
 		var index = this.stack.pop();
 		var ref = this.stack.pop();
 		this.stack.push(new NodeArrayAccess(ref, index));
 	}
 
-	bastore() {
+	_astore(type: types.Any) {
 		var value = this.stack.pop();
 		var index = this.stack.pop();
 		var ref = this.stack.pop();
@@ -348,7 +348,7 @@ export class Dynarec implements dynarec_common.Processor {
 	}
 
 	arraylength() {
-		this.stack.push(new NodeCall('Convert.arraylength', [this.stack.pop()]));
+		this.stack.push(new NodeCall('JavaRuntime.arraylength', [this.stack.pop()]));
 	}
 
 	_new(clazz: constantpool.JavaConstantClassReference) {

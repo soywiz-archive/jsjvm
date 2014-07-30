@@ -87,7 +87,7 @@ var Dynarec0 = (function () {
         this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store');
     };
     Dynarec0.prototype.convert = function (from, to) {
-        this.writeSentence('stack.push(Convert.Convert' + from.mangled + to.mangled + '(stack.pop())); // _const');
+        this.writeSentence('stack.push(JavaRuntime.Convert' + from.mangled + to.mangled + '(stack.pop())); // _const');
     };
     Dynarec0.prototype._const = function (type, value) {
         this.writeSentence('stack.push(' + value + '); // _const');
@@ -123,14 +123,14 @@ var Dynarec0 = (function () {
     Dynarec0.prototype.iinc = function (local, increment) {
         this.writeSentence(this.getref(local) + ' = ' + this.getref(local) + ' + ' + increment + '; // iinc');
     };
-    Dynarec0.prototype.baload = function () {
+    Dynarec0.prototype._aload = function (type) {
         this.writeSentence('var i = stack.pop(), aref = stack.pop(); stack.push(aref.value[i]); // baload');
     };
-    Dynarec0.prototype.bastore = function () {
+    Dynarec0.prototype._astore = function (type) {
         this.writeSentence('var val = stack.pop(), i = stack.pop(), aref = stack.pop(); aref.value[i] = val; // bastore');
     };
     Dynarec0.prototype.arraylength = function () {
-        this.writeSentence('stack.push(Convert.arraylength(stack.pop())); // arraylength');
+        this.writeSentence('stack.push(JavaRuntime.arraylength(stack.pop())); // arraylength');
     };
     Dynarec0.prototype._new = function (clazz) {
         this.writeSentence('stack.push(new ' + this.pool.getString(clazz.indexName) + '()); // new');

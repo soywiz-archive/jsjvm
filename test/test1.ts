@@ -98,3 +98,17 @@ describe('DoWhileTest.class', () => {
 		assert.equal(55, test1(10));
 	});
 });
+
+describe('Samples.class', () => {
+	var Class = JavaClass.fromStream(new Stream(fs.readFileSync(__dirname + '/../sample/Samples.class')));
+
+	it('countEven', () => {
+		var method = Class.getMethod('countEven');
+		assert.equal(5, method.func(1, 11));
+	});
+
+	it('countEvenArray', () => {
+		var method = Class.getMethod('countEvenArray');
+		assert.equal(2, method.func([1, 2, 3, 4, 5]));
+	});
+});

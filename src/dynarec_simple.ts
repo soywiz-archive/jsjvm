@@ -85,7 +85,7 @@ export class Dynarec0 implements dynarec_common.Processor {
 	}
 
 	_store(type: types.Any, index: number) { this.writeSentence(this.getref(index) + '.value = stack.pop(); // _store'); }
-	convert(from: types.Any, to: types.Any) { this.writeSentence('stack.push(Convert.Convert' + from.mangled + to.mangled + '(stack.pop())); // _const'); }
+	convert(from: types.Any, to: types.Any) { this.writeSentence('stack.push(JavaRuntime.Convert' + from.mangled + to.mangled + '(stack.pop())); // _const'); }
 	_const(type: types.Any, value: number) { this.writeSentence('stack.push(' + value + '); // _const'); }
 	aaload() { this.writeSentence('var i = stack.pop(), aref = stack.pop(); stack.push(aref.value[i]); // aaload'); }
 	aastore() { throw (new Error("Not implemented!")); }
@@ -102,9 +102,9 @@ export class Dynarec0 implements dynarec_common.Processor {
 	ifcond2(op: string, offset: number) { this.writeSentence('if (stack.pop() ' + op + ' stack.pop()) { label = ' + offset + '; break; } // ifcond2(' + op + ')'); }
 	goto(offset: any) { this.writeSentence('{ label = ' + offset + '; break; }; // goto'); }
 	iinc(local: number, increment: number) { this.writeSentence(this.getref(local) + ' = ' + this.getref(local) + ' + ' + increment + '; // iinc'); }
-	baload() { this.writeSentence('var i = stack.pop(), aref = stack.pop(); stack.push(aref.value[i]); // baload'); }
-	bastore() { this.writeSentence('var val = stack.pop(), i = stack.pop(), aref = stack.pop(); aref.value[i] = val; // bastore'); }
-	arraylength() { this.writeSentence('stack.push(Convert.arraylength(stack.pop())); // arraylength'); }
+	_aload(type: types.Any) {this.writeSentence('var i = stack.pop(), aref = stack.pop(); stack.push(aref.value[i]); // baload'); }
+	_astore(type: types.Any) { this.writeSentence('var val = stack.pop(), i = stack.pop(), aref = stack.pop(); aref.value[i] = val; // bastore'); }
+	arraylength() { this.writeSentence('stack.push(JavaRuntime.arraylength(stack.pop())); // arraylength'); }
 	_new(clazz: constantpool.JavaConstantClassReference) { this.writeSentence('stack.push(new ' + this.pool.getString(clazz.indexName) + '()); // new'); }
 	dup() { this.writeSentence('stack.push(stack[stack.length - 1]); // dup'); }
 }

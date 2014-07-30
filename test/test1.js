@@ -103,4 +103,18 @@ describe('DoWhileTest.class', function () {
         assert.equal(55, test1(10));
     });
 });
+
+describe('Samples.class', function () {
+    var Class = JavaClass.fromStream(new Stream(fs.readFileSync(__dirname + '/../sample/Samples.class')));
+
+    it('countEven', function () {
+        var method = Class.getMethod('countEven');
+        assert.equal(5, method.func(1, 11));
+    });
+
+    it('countEvenArray', function () {
+        var method = Class.getMethod('countEvenArray');
+        assert.equal(2, method.func([1, 2, 3, 4, 5]));
+    });
+});
 //# sourceMappingURL=test1.js.map
