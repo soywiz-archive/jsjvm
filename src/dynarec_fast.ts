@@ -85,7 +85,7 @@ export class Dynarec implements dynarec_common.Processor {
 		for (var n = 0; n < instructions.length; n++) {
 			var i = instructions[n];
 			if (i.opcodeInfo.type == OpcodeType.Jump) {
-				var jumpCondition = new NodeUnop(types.Any, <Node>this.processOne(i), '!', '');
+				var jumpCondition = new NodeUnop(new types.Any, <Node>this.processOne(i), '!', '');
 
 				if (i.param > i.offset) { // if
 					var blockIfStart = i.offset;
@@ -114,17 +114,21 @@ export class Dynarec implements dynarec_common.Processor {
 					// Ternary operator
 					if ((blockIfResult) && (blockElseResult) && (blockIfResult.stack.length == 1) && (blockElseResult.stack.length == 1)) {
 						this.stack.push(new NodeTernary(jumpCondition, blockIfResult.stack[0], blockElseResult.stack[0]));
-
-						//console.log(this.stack);
-
-						n = instructionBlock.getIndexByOffset(blockEndStart) - 1;
 					}
 					// Normal if.
 					else {
 						if (blockIfResult && blockIfResult.stack.length) throw (new Error("if with stack mismatch! : " + blockIfResult.stack.join(',')));
 						if (blockElseResult && blockElseResult.stack.length) throw (new Error("else with stack mismatch! : " + blockElseResult.stack.join(',')));
-						throw (new Error("if not implemented! " + blockIf.instructions.length));
+
+						//this.writeSentence(new NodeIfElse(blockIfResult.code, blockElseResult.code));
+						if (!blockElseResult) {
+							this.writeSentence('if (' + jumpCondition + ') { ' + blockIfResult.code + ' }');
+						} else {
+							this.writeSentence('if (' + jumpCondition + ') { ' + blockIfResult.code + ' } else { ' + blockElseResult.code + ' }');
+						}
 					}
+
+					n = instructionBlock.getIndexByOffset(blockEndStart) - 1;
 				} else { // while
 					throw (new Error("while not implemented!"));
 				}
