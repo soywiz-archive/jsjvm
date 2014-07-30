@@ -58,3 +58,14 @@ describe('IfTest.class', () => {
 		assert.equal(2, demo(7, 3, 4));
 	});
 });
+
+describe('ForTest.class', () => {
+	var BitsClass = JavaClass.fromStream(new Stream(fs.readFileSync(__dirname + '/../sample/ForTest.class')));
+
+	it('test1', () => {
+		var test1Method = BitsClass.getMethod('test1');
+		var test1 = test1Method.func;
+		//console.log(demoMethod.body);
+		assert.equal(1+2+3+4+5+6+7+8+9, test1(10));
+	});
+});

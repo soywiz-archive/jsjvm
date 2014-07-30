@@ -52,12 +52,28 @@ var InstructionBlock = (function () {
         return new InstructionBlock(this.instructions.slice(0, count));
     };
 
+    InstructionBlock.prototype.takeOffset = function (offset) {
+        return this.take(this.getIndexByOffset(offset));
+    };
+
+    InstructionBlock.prototype.skipOffset = function (offset) {
+        return this.skip(this.getIndexByOffset(offset));
+    };
+
     InstructionBlock.prototype.slice = function (startIndex, endIndex) {
         return new InstructionBlock(this.instructions.slice(startIndex, endIndex));
     };
 
     InstructionBlock.prototype.sliceOffsets = function (startOffset, endOffset) {
         return this.slice(this.getIndexByOffset(startOffset), this.getIndexByOffset(endOffset));
+    };
+
+    InstructionBlock.prototype.firstIndex = function (filter) {
+        for (var n = 0; n < this.instructions.length; n++) {
+            if (filter(this.instructions[n]))
+                return n;
+        }
+        return -1;
     };
 
     InstructionBlock.prototype.getIndexByOffset = function (offset) {
@@ -69,9 +85,15 @@ var InstructionBlock = (function () {
         }
 
         var index = this.indicesByOffset[offset];
-        if (index === undefined)
+        if (index === undefined) {
+            console.warn(this.indicesByOffset);
             throw (new Error("Can't find offset " + offset));
+        }
         return index;
+    };
+
+    InstructionBlock.prototype.forEach = function (callbackfn) {
+        this.instructions.forEach(callbackfn);
     };
     return InstructionBlock;
 })();

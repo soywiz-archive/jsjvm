@@ -69,12 +69,27 @@ export class InstructionBlock {
 		return new InstructionBlock(this.instructions.slice(0, count));
 	}
 
+	takeOffset(offset: number) {
+		return this.take(this.getIndexByOffset(offset));
+	}
+
+	skipOffset(offset: number) {
+		return this.skip(this.getIndexByOffset(offset));
+	}
+
 	slice(startIndex: number, endIndex: number) {
 		return new InstructionBlock(this.instructions.slice(startIndex, endIndex));
 	}
 
 	sliceOffsets(startOffset: number, endOffset: number) {
 		return this.slice(this.getIndexByOffset(startOffset), this.getIndexByOffset(endOffset));
+	}
+
+	firstIndex(filter: (i: Instruction) => boolean) {
+		for (var n = 0; n < this.instructions.length; n++) {
+			if (filter(this.instructions[n])) return n;
+		}
+		return -1;
 	}
 
 	getIndexByOffset(offset: number) {
@@ -86,8 +101,15 @@ export class InstructionBlock {
 		}
 
 		var index = this.indicesByOffset[offset];
-		if (index === undefined) throw (new Error("Can't find offset " + offset));
+		if (index === undefined) {
+			console.warn(this.indicesByOffset);
+			throw (new Error("Can't find offset " + offset));
+		}
 		return index;
+	}
+
+	forEach(callbackfn: (value: Instruction, index: number, array: Instruction[]) => void): void {
+		this.instructions.forEach(callbackfn);
 	}
 }
 

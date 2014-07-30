@@ -22,23 +22,17 @@ class NodeArrayAccess extends Node {
 
 class NodeCast extends Node {
 	constructor(public type: types.Any, public node: Node) { super(); }
-	toString() {
-		return 'Convert.Cast' + this.type.mangled + '(' + this.node.toString() + '|0' + ')';
-	}
+	toString() { return 'Convert.Cast' + this.type.mangled + '(' + this.node.toString() + '|0' + ')'; }
 }
 
 class NodeBinop extends Node {
 	constructor(public type: types.Any, public left: Node, public op: string, public right: Node) { super(); }
-	toString() {
-		return '(' + this.left.toString() + ' ' + this.op + ' ' + this.right.toString() + ')';
-	}
+	toString() { return '(' + this.left.toString() + ' ' + this.op + ' ' + this.right.toString() + ')'; }
 }
 
 class NodeTernary extends Node {
 	constructor(public cond: Node, public nodeIf: Node, public nodeElse: Node) { super(); }
-	toString() {
-		return '((' + this.cond.toString() + ') ? (' + this.nodeIf.toString() + ') : (' + this.nodeElse.toString() + '))';
-	}
+	toString() { return '((' + this.cond.toString() + ') ? (' + this.nodeIf.toString() + ') : (' + this.nodeElse.toString() + '))'; }
 }
 
 class NodeUnop extends Node {
@@ -55,87 +49,163 @@ export class Dynarec implements dynarec_common.Processor {
 	constructor(private info: dynarec_common.DynarecInfo) {
 	}
 
-	static processMethod(info: dynarec_common.DynarecInfo, instructionBlock: InstructionBlock): dynarec_common.DynarecOuput {
-		var output = Dynarec._processBlock(info, instructionBlock);
+	static processMethod(info: dynarec_common.DynarecInfo, block: InstructionBlock): dynarec_common.DynarecOuput {
+		var output = Dynarec._processBlock(info, block);
 		//console.log('///////////////////////////// ', this.stack.length);
 		if (output.stack.length) console.warn('stack length not zero at the end of the function! Probably a bug! ' + info.methodName + ' : stack: ' + JSON.stringify(output.stack));
+
+		var header = '';
+		header += '"use strict";\n';
+		for (var n = 0; n < info.max_locals - info.methodType.arguments.length; n++) header += 'var local_' + n + ' = 0;\n';
+		output.code = header + output.code;
+
+		//console.log(info.methodName + ': ' + output.code);
+
 		return output;
 	}
 
-	private static _processBlock(info: dynarec_common.DynarecInfo, instructionBlock: InstructionBlock) {
-		if (instructionBlock == null) return null;
+	private static _processBlock(info: dynarec_common.DynarecInfo, block: InstructionBlock) {
+		if (block == null) return null;
 
 		var dynarec = new Dynarec(info);
-		dynarec.process(instructionBlock);
+
+		dynarec.processFlow(block);
 
 		return { code: dynarec.body, stack: dynarec.stack };
 	}
 
 	private stack = <Node[]>[];
 	private sentences = <Node[]>[];
-	body = '"use strict";\n';
+	body = '';
 
 	writeSentence(text: string) {
 		this.body += text + "\n";
 	}
 
-	process(instructionBlock: InstructionBlock) {
-		var instructions = instructionBlock.instructions;
-		//console.log('-----------------------------', this.methodName);
-		for (var n = 0; n < instructions.length; n++) {
-			var i = instructions[n];
-			if (i.opcodeInfo.type == OpcodeType.Jump) {
-				var jumpCondition = new NodeUnop(new types.Any, <Node>this.processOne(i), '!', '');
+	processFlow(block: InstructionBlock) {
+		var instructions = block.instructions;
+		var startIndex = block.firstIndex(i => i.opcodeInfo.type == OpcodeType.Jump);
+		if (startIndex < 0) {
+			return this.processBasicBlock(block);
+		}
 
-				if (i.param > i.offset) { // if
-					var blockIfStart = i.offset;
-					var blockElseStart = i.param;
-					var blockEndStart = -1;
+		// Process basic block until this point
+		//this.processBasicBlock(instructionBlock.take(startIndex));
+		var i = instructions[startIndex];
+		var startOffset = i.offset;
+		var jumpOffset = i.param;
 
-					var blockIf = instructionBlock.sliceOffsets(blockIfStart, blockElseStart).skip(1);
-					var blockElse = null;
+		if (jumpOffset > startOffset) { // if/ternary/while
+			var firstBlock = block.sliceOffsets(startOffset, jumpOffset);
 
-					// Has goto at the end of the block.
-					if (blockIf.last.op == Opcode.goto) {
-						blockEndStart = blockIf.last.param;
-						blockIf = blockIf.rstrip(1);
-						blockElse = instructionBlock.sliceOffsets(blockElseStart, blockEndStart);
-					} else {
-						blockEndStart = blockElseStart;
-						//blockElse = new Block
-					}
+			// Has goto at the end of the block.
+			if (firstBlock.last.op == Opcode.goto) {
+				var secondJumpOffset = firstBlock.last.param;
+				//firstBlock = firstBlock.rstrip(1);
 
-					var blockIfResult = Dynarec._processBlock(this.info, blockIf);
-					var blockElseResult = Dynarec._processBlock(this.info, blockElse);
-
-					//console.log('if:' + blockIfResult.stack.length);
-					//console.log('else:' + blockElseResult.stack.length);
-
-					// Ternary operator
-					if ((blockIfResult) && (blockElseResult) && (blockIfResult.stack.length == 1) && (blockElseResult.stack.length == 1)) {
-						this.stack.push(new NodeTernary(jumpCondition, blockIfResult.stack[0], blockElseResult.stack[0]));
-					}
-					// Normal if.
-					else {
-						if (blockIfResult && blockIfResult.stack.length) throw (new Error("if with stack mismatch! : " + blockIfResult.stack.join(',')));
-						if (blockElseResult && blockElseResult.stack.length) throw (new Error("else with stack mismatch! : " + blockElseResult.stack.join(',')));
-
-						//this.writeSentence(new NodeIfElse(blockIfResult.code, blockElseResult.code));
-						if (!blockElseResult) {
-							this.writeSentence('if (' + jumpCondition + ') { ' + blockIfResult.code + ' }');
-						} else {
-							this.writeSentence('if (' + jumpCondition + ') { ' + blockIfResult.code + ' } else { ' + blockElseResult.code + ' }');
-						}
-					}
-
-					n = instructionBlock.getIndexByOffset(blockEndStart) - 1;
-				} else { // while
-					throw (new Error("while not implemented!"));
+				// Possible while?
+				if (secondJumpOffset < jumpOffset) {
+					return this.processFlowWhile(block, secondJumpOffset, startOffset, jumpOffset);
+				} else {
+					return this.processFlowIfElseTernary(block, startOffset, jumpOffset, secondJumpOffset);
 				}
 			} else {
-				this.processOne(i);
+				return this.processFlowIf(block, startOffset, jumpOffset);
 			}
+		} else { // possible do...while?
+			throw (new Error("while not implemented!"));
 		}
+
+	}
+
+	processFlowIf(block: InstructionBlock, startOffset: number, jumpOffset: number) {
+		var startIndex = block.getIndexByOffset(startOffset) + 1;
+		var endIndex = block.getIndexByOffset(jumpOffset);
+
+		var beforeBlock = block.take(startIndex);
+		var ifBlock = block.slice(startIndex, endIndex);
+		var afterBlock = block.skip(endIndex);
+
+		this.processBasicBlock(beforeBlock);
+		var jumpCondition = new NodeUnop(new types.Any, this.stack.pop(), '!', '');
+		var blockIfResult = Dynarec._processBlock(this.info, ifBlock);
+		this.writeSentence('if (' + jumpCondition + ') { ' + blockIfResult.code + ' }');
+		this.processFlow(afterBlock);
+	}
+
+	processFlowIfElseTernary(block: InstructionBlock, startOffset: number, elseOffset: number, endOffset: number) {
+		var startIndex = block.getIndexByOffset(startOffset) + 1;
+		var elseIndex = block.getIndexByOffset(elseOffset);
+		var endIndex = block.getIndexByOffset(endOffset);
+
+		var beforeBlock = block.take(startIndex);
+		var ifBlock = block.slice(startIndex, elseIndex - 1); // goto to the end of the block
+		var elseBlock = block.slice(elseIndex, endIndex);
+		var afterBlock = block.skip(endIndex);
+
+		this.processBasicBlock(beforeBlock);
+		var jumpCondition = new NodeUnop(new types.Any, this.stack.pop(), '!', '');
+
+		var ifResult = Dynarec._processBlock(this.info, ifBlock);
+		var elseResult = Dynarec._processBlock(this.info, elseBlock);
+
+		//console.log(ifBlock, ifResult); console.log('-'); console.log(elseBlock, elseResult);
+
+		// Ternary operator
+		if ((ifResult.stack.length == 1) || (elseResult.stack.length == 1)) {
+			if (ifResult.stack.length != elseResult.stack.length) throw (new Error("if with stack mismatch! : " + ifResult.stack.join(',')));
+
+			this.stack.push(new NodeTernary(jumpCondition, ifResult.stack[0], elseResult.stack[0]));
+		}
+		// Normal if.
+		else {
+			//this.writeSentence(new NodeIfElse(blockIfResult.code, blockElseResult.code));
+			this.writeSentence('if (' + jumpCondition + ') { ' + ifResult.code + ' } else { ' + elseResult.code + ' }');
+		}
+
+		this.processFlow(afterBlock);
+	}
+
+	processFlowWhile(block: InstructionBlock, startOffset: number, conditionalJumpOffset: number, loopOffset: number) {
+
+		var startIndex = block.getIndexByOffset(startOffset);
+		var conditionalJumpIndex = block.getIndexByOffset(conditionalJumpOffset) + 1;
+		var loopIndex = block.getIndexByOffset(loopOffset);
+
+		var beforeBlock = block.take(startIndex);
+		var conditionBlock = block.slice(startIndex, conditionalJumpIndex);
+		var loopBlock = block.slice(conditionalJumpIndex, loopIndex - 1);
+		var afterBlock = block.skip(loopIndex);
+
+		//console.log('beforeBlock:', beforeBlock);
+		//console.log('conditionBlock:', conditionBlock);
+		//console.log('loopBlock:', loopBlock);
+
+		this.processBasicBlock(beforeBlock);
+		this.processBasicBlock(conditionBlock);
+		var jumpCondition = new NodeUnop(new types.Any, this.stack.pop(), '!', '');
+		//var jumpCondition = this.stack.pop();
+		
+		var loopResult = Dynarec._processBlock(this.info, loopBlock);
+
+		this.writeSentence('while (' + jumpCondition + ') { ' + loopResult.code + ' }');
+
+		this.processFlow(afterBlock);
+	}
+
+	processBasicBlock(block: InstructionBlock) {
+		block.forEach(i => {
+			//if (i.opcodeInfo.type == OpcodeType.Jump) throw (new Error("A basic block should no contain any jump instruction"));
+		});
+		block.forEach(i => {
+			this.processOne(i);
+		});
+	}
+
+	private processWhile(block: InstructionBlock, startWhileOffset: number, conditionalJumpOffset: number, afterWhileOffset: number) {
+		if (!(startWhileOffset < conditionalJumpOffset)) throw (new Error("assertion failed!"));
+		if (!(conditionalJumpOffset < afterWhileOffset)) throw (new Error("assertion failed!"));
+		throw(new Error("Not implemented processWhile"));
 	}
 
 	private processOne(i: Instruction) {
@@ -225,17 +295,17 @@ export class Dynarec implements dynarec_common.Processor {
 
 	ifcond(op: string, offset: number) {
 		this.stack.push(new NodeValue(0));
-		return this.ifcond2(op, offset);
+		this.ifcond2(op, offset);
 	}
 
 	ifcond2(op: string, offset: number): any {
 		var a2 = this.stack.pop();
 		var a1 = this.stack.pop();
-		return new NodeBinop(new types.Integer(), a1, op, a2);
+		this.stack.push(new NodeBinop(new types.Integer(), a1, op, a2));
 	}
 
 	goto(offset: any): any {
-		return new NodeValue(1);
+		this.stack.push(new NodeValue(1));
 	}
 
 	iinc(local: number, increment: number) {
