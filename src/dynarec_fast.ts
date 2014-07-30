@@ -90,7 +90,6 @@ export class Dynarec implements dynarec_common.Processor {
 		}
 
 		// Process basic block until this point
-		//this.processBasicBlock(instructionBlock.take(startIndex));
 		var i = instructions[startIndex];
 		var startOffset = i.offset;
 		var jumpOffset = i.param;
@@ -113,14 +112,39 @@ export class Dynarec implements dynarec_common.Processor {
 				return this.processFlowIf(block, startOffset, jumpOffset);
 			}
 		} else { // possible do...while?
-			throw (new Error("while not implemented!"));
+			return this.processFlowDoWhile(block, jumpOffset, startOffset);
 		}
-
 	}
 
-	processFlowIf(block: InstructionBlock, startOffset: number, jumpOffset: number) {
+	private processFlowDoWhile(block: InstructionBlock, startOffset: number, endOffset: number) {
+		var startIndex = block.getIndexByOffset(startOffset);
+		var endIndex = block.getIndexByOffset(endOffset);
+
+		var beforeBlock = block.take(startIndex);
+		var loopBlock = block.slice(startIndex, endIndex + 1);
+		var afterBlock = block.skip(endIndex + 1);
+
+		//console.log(beforeBlock);
+		//console.log(loopBlock);
+		//console.log(afterBlock);
+
+		this.processBasicBlock(beforeBlock);
+		this.writeSentence('do { ');
+
+		var loopResult = Dynarec._processBlock(this.info, loopBlock.rstrip(1));
+		//console.log(loopResult);
+		this.stack = this.stack.concat(loopResult.stack);
+		this.processOne(loopBlock.last);
+		var jumpCondition = this.stack.pop();
+		this.writeSentence(loopResult.code);
+
+		this.writeSentence('} while ((' + jumpCondition + '));');
+		this.processFlow(afterBlock);
+	}
+
+	processFlowIf(block: InstructionBlock, startOffset: number, endOffset: number) {
 		var startIndex = block.getIndexByOffset(startOffset) + 1;
-		var endIndex = block.getIndexByOffset(jumpOffset);
+		var endIndex = block.getIndexByOffset(endOffset);
 
 		var beforeBlock = block.take(startIndex);
 		var ifBlock = block.slice(startIndex, endIndex);
@@ -167,7 +191,6 @@ export class Dynarec implements dynarec_common.Processor {
 	}
 
 	processFlowWhile(block: InstructionBlock, startOffset: number, conditionalJumpOffset: number, loopOffset: number) {
-
 		var startIndex = block.getIndexByOffset(startOffset);
 		var conditionalJumpIndex = block.getIndexByOffset(conditionalJumpOffset) + 1;
 		var loopIndex = block.getIndexByOffset(loopOffset);
@@ -205,12 +228,6 @@ export class Dynarec implements dynarec_common.Processor {
 		block.forEach(i => {
 			this.processOne(i);
 		});
-	}
-
-	private processWhile(block: InstructionBlock, startWhileOffset: number, conditionalJumpOffset: number, afterWhileOffset: number) {
-		if (!(startWhileOffset < conditionalJumpOffset)) throw (new Error("assertion failed!"));
-		if (!(conditionalJumpOffset < afterWhileOffset)) throw (new Error("assertion failed!"));
-		throw(new Error("Not implemented processWhile"));
 	}
 
 	private processOne(i: Instruction) {

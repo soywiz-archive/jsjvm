@@ -80,3 +80,21 @@ describe('WhileTest.class', () => {
 		assert.equal(1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9, test1(10));
 	});
 });
+
+describe('DoWhileTest.class', () => {
+	var Class = JavaClass.fromStream(new Stream(fs.readFileSync(__dirname + '/../sample/DoWhileTest.class')));
+
+	it('test1', () => {
+		var test1Method = Class.getMethod('test1');
+		var test1 = test1Method.func;
+		//console.log(demoMethod.body);
+		assert.equal(55, test1(10));
+	});
+
+	it('test2', () => {
+		var test1Method = Class.getMethod('test2');
+		var test1 = test1Method.func;
+		//console.log(demoMethod.body);
+		assert.equal(55, test1(10));
+	});
+});

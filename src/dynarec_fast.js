@@ -187,7 +187,6 @@ var Dynarec = (function () {
         }
 
         // Process basic block until this point
-        //this.processBasicBlock(instructionBlock.take(startIndex));
         var i = instructions[startIndex];
         var startOffset = i.offset;
         var jumpOffset = i.param;
@@ -210,13 +209,39 @@ var Dynarec = (function () {
                 return this.processFlowIf(block, startOffset, jumpOffset);
             }
         } else {
-            throw (new Error("while not implemented!"));
+            return this.processFlowDoWhile(block, jumpOffset, startOffset);
         }
     };
 
-    Dynarec.prototype.processFlowIf = function (block, startOffset, jumpOffset) {
+    Dynarec.prototype.processFlowDoWhile = function (block, startOffset, endOffset) {
+        var startIndex = block.getIndexByOffset(startOffset);
+        var endIndex = block.getIndexByOffset(endOffset);
+
+        var beforeBlock = block.take(startIndex);
+        var loopBlock = block.slice(startIndex, endIndex + 1);
+        var afterBlock = block.skip(endIndex + 1);
+
+        //console.log(beforeBlock);
+        //console.log(loopBlock);
+        //console.log(afterBlock);
+        this.processBasicBlock(beforeBlock);
+        this.writeSentence('do { ');
+
+        var loopResult = Dynarec._processBlock(this.info, loopBlock.rstrip(1));
+
+        //console.log(loopResult);
+        this.stack = this.stack.concat(loopResult.stack);
+        this.processOne(loopBlock.last);
+        var jumpCondition = this.stack.pop();
+        this.writeSentence(loopResult.code);
+
+        this.writeSentence('} while ((' + jumpCondition + '));');
+        this.processFlow(afterBlock);
+    };
+
+    Dynarec.prototype.processFlowIf = function (block, startOffset, endOffset) {
         var startIndex = block.getIndexByOffset(startOffset) + 1;
-        var endIndex = block.getIndexByOffset(jumpOffset);
+        var endIndex = block.getIndexByOffset(endOffset);
 
         var beforeBlock = block.take(startIndex);
         var ifBlock = block.slice(startIndex, endIndex);
@@ -298,14 +323,6 @@ var Dynarec = (function () {
         block.forEach(function (i) {
             _this.processOne(i);
         });
-    };
-
-    Dynarec.prototype.processWhile = function (block, startWhileOffset, conditionalJumpOffset, afterWhileOffset) {
-        if (!(startWhileOffset < conditionalJumpOffset))
-            throw (new Error("assertion failed!"));
-        if (!(conditionalJumpOffset < afterWhileOffset))
-            throw (new Error("assertion failed!"));
-        throw (new Error("Not implemented processWhile"));
     };
 
     Dynarec.prototype.processOne = function (i) {
