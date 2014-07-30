@@ -182,13 +182,18 @@ export class Dynarec implements dynarec_common.Processor {
 		//console.log('loopBlock:', loopBlock);
 
 		this.processBasicBlock(beforeBlock);
+
+		this.writeSentence('while (true) {');
+
 		this.processBasicBlock(conditionBlock);
-		var jumpCondition = new NodeUnop(new types.Any, this.stack.pop(), '!', '');
+		var breakCondition = this.stack.pop();
+		this.writeSentence('if (' + breakCondition + ') break;');
 		//var jumpCondition = this.stack.pop();
 		
 		var loopResult = Dynarec._processBlock(this.info, loopBlock);
 
-		this.writeSentence('while (' + jumpCondition + ') { ' + loopResult.code + ' }');
+		this.writeSentence(loopResult.code);
+		this.writeSentence('}');
 
 		this.processFlow(afterBlock);
 	}
